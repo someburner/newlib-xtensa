@@ -36,7 +36,7 @@ Supporting OS subroutine required: Some implementations require
 #include <reent.h>
 #include <sys/types.h>
 #include <sys/time.h>
-
+#if 0
 time_t
 _DEFUN (time, (t),
 	time_t * t)
@@ -51,3 +51,4 @@ _DEFUN (time, (t),
     }
   return -1;
 }
+#endif
