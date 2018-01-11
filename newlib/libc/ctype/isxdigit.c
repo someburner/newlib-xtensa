@@ -40,6 +40,6 @@ No supporting OS subroutines are required.
 int
 _DEFUN(isxdigit,(c),int c)
 {
-	return(__ctype_ptr__[c+1] & ((_X)|(_N)));
+	return(pgm_read_byte(&__ctype_ptr__[c+1]) & ((_X)|(_N)));
 }
 

@@ -7,8 +7,9 @@
  */
 
 #include "local.h"
+#include <sys/pgmspace.h>
 
-_CONST int __month_lengths[2][MONSPERYEAR] = {
+_CONST int __month_lengths[2][MONSPERYEAR] PROGMEM = {
   {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
   {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
 } ;
