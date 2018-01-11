@@ -48,7 +48,7 @@ No supporting OS subroutines are required.
 int
 _DEFUN(isgraph,(c),int c)
 {
-	return(__ctype_ptr__[c+1] & (_P|_U|_L|_N));
+	return(pgm_read_byte(&__ctype_ptr__[c+1]) & (_P|_U|_L|_N));
 }
 
 
@@ -56,6 +56,6 @@ _DEFUN(isgraph,(c),int c)
 int
 _DEFUN(isprint,(c),int c)
 {
-	return(__ctype_ptr__[c+1] & (_P|_U|_L|_N|_B));
+	return(pgm_read_byte(&__ctype_ptr__[c+1]) & (_P|_U|_L|_N|_B));
 }
 

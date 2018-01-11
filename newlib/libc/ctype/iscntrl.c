@@ -42,7 +42,7 @@ No supporting OS subroutines are required.
 int
 _DEFUN(iscntrl,(c),int c)
 {
-	return(__ctype_ptr__[c+1] & _C);
+	return(pgm_read_byte(&__ctype_ptr__[c+1]) & _C);
 }
 
 

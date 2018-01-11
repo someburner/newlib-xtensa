@@ -115,7 +115,7 @@ _printf_i (struct _reent *data, struct _prt_data_t *pdata, FILE *fp,
   int base;
   int n;
   char *cp = pdata->buf + BUF;
-  char *xdigs = "0123456789ABCDEF";
+  static const char xdigs[] PROGMEM = "0123456789ABCDEF";
 
   /* Decoding the conversion specifier.  */
   switch (pdata->code)
@@ -156,7 +156,6 @@ _printf_i (struct _reent *data, struct _prt_data_t *pdata, FILE *fp,
       /* NOSTRICT.  */
     case 'x':
       pdata->l_buf[2] = 'x';
-      xdigs = "0123456789abcdef";
 hex:
       _uquad = UARG (pdata->flags);
       base = 16;
@@ -188,7 +187,7 @@ number:
 	{
 	  do
 	    {
-	      *--cp = xdigs[_uquad % base];
+	      *--cp = pgm_read_byte(&xdigs[_uquad % base]);
 	      _uquad /= base;
 	    }
 	  while (_uquad);
@@ -210,13 +209,14 @@ number:
     case '\0':
       pdata->size = 0;
       break;
+    case 'S': // TODO: Verify cap-S under Arduino is "PROGMEM char*", not wchar_t
     case 's':
       cp = GET_ARG (N, *ap, char_ptr_t);
       /* Precision gives the maximum number of chars to be written from a
 	 string, and take prec == -1 into consideration.
 	 Use normal Newlib approach here to support case where cp is not
 	 nul-terminated.  */
-      char *p = memchr (cp, 0, pdata->prec);
+      char *p = memchr_P (cp, 0, pdata->prec);
 
       if (p != NULL)
 	pdata->prec = p - cp;

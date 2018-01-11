@@ -229,7 +229,7 @@ _DEFUN(__ssputs_r, (ptr, fp, buf, len),
   if (len < w)
     w = len;
 
-  (void)memmove ((_PTR) fp->_p, (_PTR) buf, (size_t) (w));
+  (void)memcpy_P ((_PTR) fp->_p, (_PTR) buf, (size_t) (w));
   fp->_w -= w;
   fp->_p += w;
   return 0;
@@ -321,7 +321,7 @@ _DEFUN(__ssprint_r, (ptr, fp, uio),
       if (len < w)
 	w = len;
 
-      (void)memmove ((_PTR) fp->_p, (_PTR) p, (size_t) (w));
+      (void)memcpy_P ((_PTR) fp->_p, (_PTR) p, (size_t) (w));
       fp->_w -= w;
       fp->_p += w;
       /* Pretend we copied all.  */
@@ -523,7 +523,7 @@ _DEFUN(_VFPRINTF_R, (data, fp, fmt0, ap),
   for (;;)
     {
       cp = fmt;
-      while (*fmt != '\0' && *fmt != '%')
+      while (pgm_read_byte(fmt) != '\0' && pgm_read_byte(fmt) != '%')
 	fmt += 1;
 
       if ((m = fmt - cp) != 0)
@@ -531,7 +531,7 @@ _DEFUN(_VFPRINTF_R, (data, fp, fmt0, ap),
 	  PRINT (cp, m);
 	  prt_data.ret += m;
 	}
-      if (*fmt == '\0')
+      if (pgm_read_byte(fmt) == '\0')
 	goto done;
 
       fmt++;		/* Skip over '%'.  */
@@ -551,7 +551,7 @@ _DEFUN(_VFPRINTF_R, (data, fp, fmt0, ap),
        *	-- ANSI X3J11
        */
       flag_chars = "#-0+ ";
-      for (; cp = memchr (flag_chars, *fmt, 5); fmt++)
+      for (; cp = memchr (flag_chars, pgm_read_byte(fmt), 5); fmt++)
 	prt_data.flags |= (1 << (cp - flag_chars));
 
       if (prt_data.flags & SPACESGN)
@@ -566,7 +566,7 @@ _DEFUN(_VFPRINTF_R, (data, fp, fmt0, ap),
 	prt_data.l_buf[0] = '+';
 
       /* The width.  */
-      if (*fmt == '*')
+      if (pgm_read_byte(fmt) == '*')
 	{
 	  /*
 	   * ``A negative field width argument is taken as a
@@ -584,15 +584,15 @@ _DEFUN(_VFPRINTF_R, (data, fp, fmt0, ap),
 	}
       else
         {
-	  for (; is_digit (*fmt); fmt++)
-	    prt_data.width = 10 * prt_data.width + to_digit (*fmt);
+	  for (; is_digit (pgm_read_byte(fmt)); fmt++)
+	    prt_data.width = 10 * prt_data.width + to_digit (pgm_read_byte(fmt));
 	}
 
       /* The precision.  */
-      if (*fmt == '.')
+      if (pgm_read_byte(fmt) == '.')
 	{
 	  fmt++;
-	  if (*fmt == '*')
+	  if (pgm_read_byte(fmt) == '*')
 	    {
 	      fmt++;
 	      prt_data.prec = GET_ARG (n, ap, int);
@@ -602,21 +602,21 @@ _DEFUN(_VFPRINTF_R, (data, fp, fmt0, ap),
 	  else
 	    {
 	      prt_data.prec = 0;
-	      for (; is_digit (*fmt); fmt++)
-		prt_data.prec = 10 * prt_data.prec + to_digit (*fmt);
+	      for (; is_digit (pgm_read_byte(fmt)); fmt++)
+		prt_data.prec = 10 * prt_data.prec + to_digit (pgm_read_byte(fmt));
 	    }
 	}
 
       /* The length modifiers.  */
       flag_chars = "hlL";
-      if ((cp = memchr (flag_chars, *fmt, 3)) != NULL)
+      if ((cp = memchr (flag_chars, pgm_read_byte(fmt), 3)) != NULL)
 	{
 	  prt_data.flags |= (SHORTINT << (cp - flag_chars));
 	  fmt++;
 	}
 
       /* The conversion specifiers.  */
-      prt_data.code = *fmt++;
+      prt_data.code = pgm_read_byte(fmt++);
       cp = memchr ("efgEFG", prt_data.code, 6);
 #ifdef FLOATING_POINT
       /* If cp is not NULL, we are facing FLOATING POINT NUMBER.  */

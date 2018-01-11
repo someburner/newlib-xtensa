@@ -54,8 +54,8 @@ lib_a_AR = $(AR) $(ARFLAGS)
 lib_a_LIBADD =
 am_lib_a_OBJECTS = lib_a-setjmp.$(OBJEXT) lib_a-memcpy.$(OBJEXT) \
 	lib_a-memset.$(OBJEXT) lib_a-strcmp.$(OBJEXT) \
-	lib_a-strcpy.$(OBJEXT) lib_a-strncpy.$(OBJEXT) \
-	lib_a-strlen.$(OBJEXT)
+	lib_a-fast_strcpy.$(OBJEXT) lib_a-fast_strncpy.$(OBJEXT) \
+	lib_a-strlen.$(OBJEXT) lib_a-strcpy.$(OBJEXT)
 lib_a_OBJECTS = $(am_lib_a_OBJECTS)
 DEFAULT_INCLUDES = -I.@am__isrc@
 depcomp =
@@ -175,7 +175,7 @@ AUTOMAKE_OPTIONS = cygnus
 INCLUDES = $(NEWLIB_CFLAGS) $(CROSS_CFLAGS) $(TARGET_CFLAGS)
 AM_CCASFLAGS = $(INCLUDES)
 noinst_LIBRARIES = lib.a
-lib_a_SOURCES = setjmp.S memcpy.S memset.S strcmp.S strcpy.S strncpy.S strlen.S
+lib_a_SOURCES = setjmp.S memcpy.S memset.S strcmp.S fast_strcpy.S fast_strncpy.S strcpy.c strlen.S
 lib_a_CCASFLAGS = $(AM_CCASFLAGS)
 lib_a_CFLAGS = $(AM_CFLAGS)
 TARGETDOC = ../../tmp.texi
@@ -233,6 +233,12 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
+.c.o:
+	$(COMPILE) -c $<
+
+.c.obj:
+	$(COMPILE) -c `$(CYGPATH_W) '$<'`
+
 .S.o:
 	$(CPPASCOMPILE) -c -o $@ $<
 
@@ -263,23 +269,29 @@ lib_a-strcmp.o: strcmp.S
 lib_a-strcmp.obj: strcmp.S
 	$(CCAS) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_a_CCASFLAGS) $(CCASFLAGS) -c -o lib_a-strcmp.obj `if test -f 'strcmp.S'; then $(CYGPATH_W) 'strcmp.S'; else $(CYGPATH_W) '$(srcdir)/strcmp.S'; fi`
 
-lib_a-strcpy.o: strcpy.S
-	$(CCAS) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_a_CCASFLAGS) $(CCASFLAGS) -c -o lib_a-strcpy.o `test -f 'strcpy.S' || echo '$(srcdir)/'`strcpy.S
+lib_a-fast_strcpy.o: fast_strcpy.S
+	$(CCAS) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_a_CCASFLAGS) $(CCASFLAGS) -c -o lib_a-fast_strcpy.o `test -f 'fast_strcpy.S' || echo '$(srcdir)/'`fast_strcpy.S
 
-lib_a-strcpy.obj: strcpy.S
-	$(CCAS) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_a_CCASFLAGS) $(CCASFLAGS) -c -o lib_a-strcpy.obj `if test -f 'strcpy.S'; then $(CYGPATH_W) 'strcpy.S'; else $(CYGPATH_W) '$(srcdir)/strcpy.S'; fi`
+lib_a-fast_strcpy.obj: fast_strcpy.S
+	$(CCAS) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_a_CCASFLAGS) $(CCASFLAGS) -c -o lib_a-fast_strcpy.obj `if test -f 'fast_strcpy.S'; then $(CYGPATH_W) 'fast_strcpy.S'; else $(CYGPATH_W) '$(srcdir)/fast_strcpy.S'; fi`
 
-lib_a-strncpy.o: strncpy.S
-	$(CCAS) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_a_CCASFLAGS) $(CCASFLAGS) -c -o lib_a-strncpy.o `test -f 'strncpy.S' || echo '$(srcdir)/'`strncpy.S
+lib_a-fast_strncpy.o: fast_strncpy.S
+	$(CCAS) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_a_CCASFLAGS) $(CCASFLAGS) -c -o lib_a-fast_strncpy.o `test -f 'fast_strncpy.S' || echo '$(srcdir)/'`fast_strncpy.S
 
-lib_a-strncpy.obj: strncpy.S
-	$(CCAS) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_a_CCASFLAGS) $(CCASFLAGS) -c -o lib_a-strncpy.obj `if test -f 'strncpy.S'; then $(CYGPATH_W) 'strncpy.S'; else $(CYGPATH_W) '$(srcdir)/strncpy.S'; fi`
+lib_a-fast_strncpy.obj: fast_strncpy.S
+	$(CCAS) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_a_CCASFLAGS) $(CCASFLAGS) -c -o lib_a-fast_strncpy.obj `if test -f 'fast_strncpy.S'; then $(CYGPATH_W) 'fast_strncpy.S'; else $(CYGPATH_W) '$(srcdir)/fast_strncpy.S'; fi`
 
 lib_a-strlen.o: strlen.S
 	$(CCAS) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_a_CCASFLAGS) $(CCASFLAGS) -c -o lib_a-strlen.o `test -f 'strlen.S' || echo '$(srcdir)/'`strlen.S
 
 lib_a-strlen.obj: strlen.S
 	$(CCAS) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_a_CCASFLAGS) $(CCASFLAGS) -c -o lib_a-strlen.obj `if test -f 'strlen.S'; then $(CYGPATH_W) 'strlen.S'; else $(CYGPATH_W) '$(srcdir)/strlen.S'; fi`
+
+lib_a-strcpy.o : strcpy.c
+	$(COMPILE) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_a_CCASFLAGS) $(CCASFLAGS) -c -o lib_a-strcpy.o `test -f 'strcpy.c' || echo '$(srcdir)/'`strcpy.c
+
+lib_a-strcpy.obj: strcpy.c
+	$(COMPILE) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_a_CCASFLAGS) $(CCASFLAGS) -c -o lib_a-strcpy.obj `if test -f 'strcpy.c'; then $(CYGPATH_W) 'strcpy.c'; else $(CYGPATH_W) '$(srcdir)/strcpy.c'; fi`
 
 ID: $(HEADERS) $(SOURCES) $(LISP) $(TAGS_FILES)
 	list='$(SOURCES) $(HEADERS) $(LISP) $(TAGS_FILES)'; \

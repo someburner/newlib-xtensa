@@ -137,7 +137,7 @@ _CONST char _ctype_[1 + 256] = {
 
 #else	/* !defined(ALLOW_NEGATIVE_CTYPE_INDEX) */
 
-_CONST char _ctype_[1 + 256] = {
+_CONST char _ctype_[1 + 256] PROGMEM = {
 	0,
 	_CTYPE_DATA_0_127,
 	_CTYPE_DATA_128_255

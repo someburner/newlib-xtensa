@@ -27,9 +27,9 @@
 	.begin schedule
 	.align	4
 	.literal_position
-	.global	strcpy
-	.type	strcpy, @function
-strcpy:
+	.global	__fast_strcpy
+	.type	__fast_strcpy, @function
+__fast_strcpy:
 	leaf_entry sp, 16
 	/* a2 = dst, a3 = src */
 
@@ -232,4 +232,4 @@ strcpy:
 #endif /* 0 */
 	.end schedule
 
-	.size	strcpy, . - strcpy
+	.size	__fast_strcpy, . - __fast_strcpy
