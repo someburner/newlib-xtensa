@@ -15,11 +15,11 @@
 #endif
 
 #ifndef PGM_P
-#define PGM_P
+#define PGM_P const char *
 #endif
 
 #ifndef PGM_VOID_P
-#define PGM_VOID_P
+#define PGM_VOID_P const void *
 #endif
 
 #ifndef PSTR
