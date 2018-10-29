@@ -114,23 +114,23 @@ char* strstr_P(const char* haystack, PGM_P needle)
 
 void* memcpy_P(void* dest, PGM_VOID_P src, size_t count)
 {
+    const uint8_t* read = (const uint8_t*)(src);
+    uint8_t* write = (uint8_t*)(dest);
+
     // Optimize for the case when dest and src start at 4-byte alignment
     // In this case we can copy ~8x faster by simply reading and writing
     // 32-bit values until there's less than a whole word left to write
     if ( 0 == (((uint32_t)dest|(uint32_t)src) & 0x3) ) {
-        const uint32_t* read = (const uint32_t*)(src);
-        uint32_t* write = (uint32_t*)(dest);
+        const uint32_t* readW = (const uint32_t*)(src);
+        uint32_t* writeW = (uint32_t*)(dest);
         while (count >= 4) {
-            *write++ = *read++;
+            *writeW++ = *readW++;
             count -= 4;
         }
         // Let default byte-by-byte finish the work
-        dest = (void *) write;
-        src = (PGM_VOID_P) read;
+        write = (uint8_t *) writeW;
+        read = (const uint8_t*) readW;
     }
-
-    const uint8_t* read = (const uint8_t*)(src);
-    uint8_t* write = (uint8_t*)(dest);
 
     while (count)
     {
