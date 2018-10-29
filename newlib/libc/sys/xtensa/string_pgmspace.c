@@ -37,7 +37,7 @@ size_t strnlen_P(PGM_P s, size_t size)
     char c = 0;
 
     // Take care of any misaligned starting data
-    for (cp = s; 0 != ((uint32_t)cp & 0x3) && size != 0 ; cp++, size--) {
+    for (cp = s; 0 != ((uint32_t)cp & 0x3) && size != 0 ; cp++, size--, s++) {
         c = pgm_read_byte(cp);
         if (!c) goto done;
     }
