@@ -32,19 +32,21 @@
 
 size_t strnlen_P(PGM_P s, size_t size)
 {
-    const char* cp;
+    const char *cp = s;
     const uint32_t *pmem;
     char c = 0;
 
     // Take care of any misaligned starting data
-    for (cp = s; 0 != ((uint32_t)cp & 0x3) && size != 0 ; cp++, size--, s++) {
+    while ( (size > 0) && ((uint32_t)cp & 0x3) ) {
         c = pgm_read_byte(cp);
         if (!c) goto done;
+        size--;
+        cp++;
     }
 
     // We didn't find the end in the initial misaligned bits
     // Now try it 32-bits at a time while possible
-    pmem = (const uint32_t*)s;
+    pmem = (const uint32_t*)cp;
     while (size > 3) {
       uint32_t w = *pmem;
       if (0 == (w & 0xff)) {
@@ -71,9 +73,12 @@ size_t strnlen_P(PGM_P s, size_t size)
     }
 
     // Take care of any straggling bytes
-    for (cp = (const char *)pmem; 0 != ((uint32_t)cp & 0x3) && size != 0 ; cp++, size--) {
+    cp = (const char *)pmem;
+    while ( size > 0 ) {
         c = pgm_read_byte(cp);
         if (!c) goto done;
+        size--;
+        cp++;
     }
 
 done:
@@ -228,16 +233,16 @@ char* strncpy_P(char* dest, PGM_P src, size_t size)
         const uint32_t *lSrc = (const uint32_t*)src;
         while (size >= 4) {
             register uint32_t p = *(lSrc++);
-            *dest++ = p & 0xff;
+            *write++ = p & 0xff;
             if (p&0xff) {
                 p = p >> 8;
-                *dest++ = p & 0xff;
+                *write++ = p & 0xff;
                 if (p&0xff) {
                     p = p >> 8;
-                    *dest++ = p & 0xff;
+                    *write++ = p & 0xff;
                     if (p&0xff) {
                         p = p >> 8;
-                        *dest++ = p & 0xff;
+                        *write++ = p & 0xff;
                     } else break;
                 } else break;
             } else break;
@@ -245,7 +250,7 @@ char* strncpy_P(char* dest, PGM_P src, size_t size)
         }
         // Let default byte-by-byte finish the work
         read = (const char *) lSrc;
-        ch = *(dest-1);
+        ch = *(write-1);
     }
 
     while (size > 0 && ch != '\0')
