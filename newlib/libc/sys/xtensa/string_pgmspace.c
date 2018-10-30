@@ -229,28 +229,22 @@ char* strncpy_P(char* dest, PGM_P src, size_t size)
     // Optimize for the case when the src starts at 4-byte alignment
     // In this case we can copy ~4x faster by simply reading and writing
     // 32-bit values until there's less than a whole word left to write
-    if ( 0 == (((uint32_t)src) & 0x3) ) {
-        const uint32_t *lSrc = (const uint32_t*)src;
+    if (!((((uint32_t)src)|(uint32_t)dest) & 0x3)) {
         while (size >= 4) {
-            register uint32_t p = *(lSrc++);
-            *write++ = p & 0xff;
-            if (p&0xff) {
-                p = p >> 8;
-                *write++ = p & 0xff;
-                if (p&0xff) {
-                    p = p >> 8;
-                    *write++ = p & 0xff;
-                    if (p&0xff) {
-                        p = p >> 8;
-                        *write++ = p & 0xff;
-                    } else break;
-                } else break;
-            } else break;
-            size -= 4;
+            uint32_t p = *(uint32_t*)read;
+            // Bit of magic to check if any bytes are 0 in the word, adapted from:
+            // https://jameshfisher.com/2017/01/24/bitwise-check-for-zero-byte.html
+            int hasZero = (p - 0x01010101) & ~p & 0x80808080;
+            if (hasZero) {
+                // Don't handle the partial word case here, use standard flow
+                break;
+            } else {
+                *(uint32_t *)write = p;
+                read += 4;
+                write += 4;
+                size -= 4;
+            }
         }
-        // Let default byte-by-byte finish the work
-        read = (const char *) lSrc;
-        ch = *(write-1);
     }
 
     while (size > 0 && ch != '\0')
