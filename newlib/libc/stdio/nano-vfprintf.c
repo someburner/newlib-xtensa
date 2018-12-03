@@ -614,6 +614,11 @@ _DEFUN(_VFPRINTF_R, (data, fp, fmt0, ap),
 	  prt_data.flags |= (SHORTINT << (cp - flag_chars));
 	  fmt++;
 	}
+      /* Convert %z into a no-op as size_t == int on ESP8266 */
+      if (pgm_read_byte(fmt) == 'z')
+        {
+          fmt++;
+        }
 
       /* The conversion specifiers.  */
       prt_data.code = pgm_read_byte(fmt++);

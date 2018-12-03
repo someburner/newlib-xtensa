@@ -115,7 +115,9 @@ _printf_i (struct _reent *data, struct _prt_data_t *pdata, FILE *fp,
   int base;
   int n;
   char *cp = pdata->buf + BUF;
-  static const char xdigs[] PROGMEM = "0123456789ABCDEF";
+  static const char xdigsUC[] PROGMEM = "0123456789ABCDEF";
+  static const char xdigsLC[] PROGMEM = "0123456789abcdef";
+  const char *xdigs = xdigsLC;
 
   /* Decoding the conversion specifier.  */
   switch (pdata->code)
@@ -141,6 +143,7 @@ _printf_i (struct _reent *data, struct _prt_data_t *pdata, FILE *fp,
       goto nosign;
     case 'X':
       pdata->l_buf[2] = 'X';
+      xdigs = xdigsUC;
       goto hex;
     case 'p':
       /*
