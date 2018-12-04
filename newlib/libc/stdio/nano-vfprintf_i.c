@@ -111,7 +111,7 @@ _printf_i (struct _reent *data, struct _prt_data_t *pdata, FILE *fp,
 {
   /* Field size expanded by dprec.  */
   int realsz;
-  u_quad_t _uquad;
+  u_oct_t _uoct;
   int base;
   int n;
   char *cp = pdata->buf + BUF;
@@ -128,17 +128,17 @@ _printf_i (struct _reent *data, struct _prt_data_t *pdata, FILE *fp,
       goto non_number_nosign;
     case 'd':
     case 'i':
-      _uquad = SARG (pdata->flags);
-      if ((long) _uquad < 0)
+      _uoct = SARG (pdata->flags);
+      if ((long long) _uoct < 0)
 	{
-	  _uquad = -_uquad;
+	  _uoct = -_uoct;
 	  pdata->l_buf[0] = '-';
 	}
       base = 10;
       goto number;
     case 'u':
     case 'o':
-      _uquad = UARG (pdata->flags);
+      _uoct = UARG (pdata->flags);
       base = (pdata->code == 'o') ? 8 : 10;
       goto nosign;
     case 'X':
@@ -160,13 +160,13 @@ _printf_i (struct _reent *data, struct _prt_data_t *pdata, FILE *fp,
     case 'x':
       pdata->l_buf[2] = 'x';
 hex:
-      _uquad = UARG (pdata->flags);
+      _uoct = UARG (pdata->flags);
       base = 16;
       if (pdata->flags & ALT)
 	pdata->flags |= HEXPREFIX;
 
       /* Leading 0x/X only if non-zero.  */
-      if (_uquad == 0)
+      if (_uoct == 0)
 	pdata->flags &= ~HEXPREFIX;
 
       /* Unsigned conversions.  */
@@ -186,14 +186,14 @@ number:
        * explicit precision of zero is no characters.''
        *	-- ANSI X3J11
        */
-      if (_uquad != 0 || pdata->prec != 0)
+      if (_uoct != 0 || pdata->prec != 0)
 	{
 	  do
 	    {
-	      *--cp = pgm_read_byte(&xdigs[_uquad % base]);
-	      _uquad /= base;
+	      *--cp = pgm_read_byte(&xdigs[_uoct % base]);
+	      _uoct /= base;
 	    }
-	  while (_uquad);
+	  while (_uoct);
 	}
       /* For 'o' conversion, '#' increases the precision to force the first
 	 digit of the result to be zero.  */

@@ -614,9 +614,23 @@ _DEFUN(_VFPRINTF_R, (data, fp, fmt0, ap),
 	  prt_data.flags |= (SHORTINT << (cp - flag_chars));
 	  fmt++;
 	}
-      /* Convert %z into a no-op as size_t == int on ESP8266 */
-      if (pgm_read_byte(fmt) == 'z')
+      /* Handle ll case */
+      if ((prt_data.flags & LONGINT) && (pgm_read_byte(fmt) == 'l'))
         {
+          prt_data.flags |= LONGLONG;
+          prt_data.flags &= ~LONGINT;
+          fmt++;
+        }
+
+      /* Convert %z and %t into a no-op as size_t == int on ESP8266 */
+      if ((pgm_read_byte(fmt) == 'z') || (pgm_read_byte(fmt) == 't'))
+        {
+          fmt++;
+        }
+      /* Convert %j to a ll */
+      if (pgm_read_byte(fmt) == 'j')
+        {
+          prt_data.flags |= LONGLONG;
           fmt++;
         }
 
