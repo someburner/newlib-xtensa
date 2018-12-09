@@ -552,7 +552,9 @@ case "${host}" in
 	sys_dir=w65
 	;;
   xtensa*-*-* | xtensa*-*)
+	posix_dir=posix
 	sys_dir=xtensa
+	newlib_cflags="${newlib_cflags} -D_NO_EXECVE -D_NO_GLOB -D_NO_WORDEXP -DHAVE_OPENDIR -DSIGNAL_PROVIDED -DABORT_PROVIDED -DMALLOC_PROVIDED -DATEXIT_PROVIDED"
 	;;
   z8k-*-coff)
 	sys_dir=z8ksim
