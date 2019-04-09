@@ -430,7 +430,7 @@ _DEFUN(__sfputs_r, (ptr, fp, buf, len),
       for (i = 0; i < len; i++)
 	{
 	  /* Call __sfputc_r to skip _fputc_r.  */
-	  if (__sfputc_r (ptr, (int)buf[i], fp) == EOF)
+	  if (__sfputc_r (ptr, (int)pgm_read_byte(&buf[i]), fp) == EOF)
 	    return -1;
 	}
     }
