@@ -44,7 +44,7 @@ extern "C" {
 // b3, b2, b1, b0
 //     w1,     w0
 
-#define pgm_read_with_offset(addr, res) \
+#define pgm_read_with_offset_new(addr, res) \
   asm("extui    %0, %1, 0, 2\n"     /* Extract offset within word (in bytes) */ \
       "sub      %1, %1, %0\n"       /* Subtract offset from addr, yielding an aligned address */ \
       "l32i.n   %1, %1, 0x0\n"      /* Load word from aligned address */ \
