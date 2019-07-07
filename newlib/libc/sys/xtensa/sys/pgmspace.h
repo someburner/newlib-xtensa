@@ -82,7 +82,7 @@ static inline uint16_t pgm_read_word_inlined(const void* addr) {
     #define pgm_read_ptr_aligned(addr)     (*(const void* const*)(addr))
 #endif
 
-__attribute__((optimize("-O3"), always_inline)) static inline uint32_t pgm_read_dword_unaligned(const void *addr) {
+__attribute__((optimize("-O0"))) static inline uint32_t pgm_read_dword_unaligned(const void *addr) {
     if (!(((int)addr)&3)) return *(const uint32_t *)addr;
     int off = (((int)addr) & 3) << 3;
     const uint32_t *p = (const uint32_t *)((int)addr & (~3));
@@ -91,17 +91,9 @@ __attribute__((optimize("-O3"), always_inline)) static inline uint32_t pgm_read_
     return (a>>off) | (b <<(32-off));
 }
 
-__attribute__((optimize("-O3"), always_inline)) static inline float pgm_read_float_unaligned(const void *addr) {
-    return (float)pgm_read_dword_unaligned(addr);
-}
-
-__attribute__((optimize("-O3"), always_inline)) static inline void *pgm_read_ptr_unaligned(const void *addr) {
-    return (void *)pgm_read_dword_unaligned(addr);
-}
-
-__attribute__((optimize("-O3"), always_inline)) static inline uint16_t pgm_read_word_unaligned(const void *addr) {
-    return pgm_read_dword_unaligned(addr) & 0xffff;
-}
+#define pgm_read_float_unaligned(addr) ((float)pgm_read_dword_unaligned(addr))
+#define pgm_read_ptr_unaligned(addr)   ((void*)pgm_read_dword_unaligned(addr))
+#define pgm_read_word_unaligned(addr)  ((uint16_t)(pgm_read_dword_unaligned(addr) & 0xffff))
 
 
 // Allow selection of _aligned or _unaligned, but default to _unaligned for Arduino compatibility
