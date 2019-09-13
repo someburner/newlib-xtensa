@@ -181,6 +181,15 @@ void* memccpy_P(void* dest, PGM_VOID_P src, int c, size_t count)
     return result;
 }
 
+void *memmove_P(void *dest, const void *src, size_t n)
+{
+    if (src >= (const char *)0x40000000)
+        return memcpy_P(dest, src, n);
+    else
+        return memmove(dest, src, n);
+}
+
+
 void* memmem_P(const void* buf, size_t bufSize, PGM_VOID_P findP, size_t findPSize)
 {
     const uint8_t* read = (const uint8_t*)buf;
