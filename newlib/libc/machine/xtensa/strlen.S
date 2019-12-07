@@ -1,3 +1,5 @@
+// ESP8266 has this in ROM
+#if 0
 /* ANSI C standard library function strlen.
 
    Copyright (c) 2001-2008 Tensilica Inc.
@@ -113,3 +115,4 @@ strlen:
 	.end schedule
 
 	.size	strlen, . - strlen
+#endif

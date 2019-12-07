@@ -1,3 +1,5 @@
+//ESP8266 has this in ROM
+#if 0
 /*
 FUNCTION
 <<bzero>>---initialize memory to zero
@@ -41,3 +43,4 @@ _DEFUN (bzero, (b, length),
   while (length--)
     *ptr++ = 0;
 }
+#endif

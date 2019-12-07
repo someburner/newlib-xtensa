@@ -1,3 +1,5 @@
+// ESP8266 has this in ROM
+#if 0
 /*
 FUNCTION
 	<<memmove>>---move possibly overlapping memory
@@ -142,3 +144,4 @@ _DEFUN (memmove, (dst_void, src_void, length),
   return dst_void;
 #endif /* not PREFER_SIZE_OVER_SPEED */
 }
+#endif

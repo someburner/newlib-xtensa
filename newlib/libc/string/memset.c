@@ -1,3 +1,5 @@
+// ESP8266 has this in ROM
+#if 0
 /*
 FUNCTION
 	<<memset>>---set an area of memory
@@ -102,3 +104,4 @@ _DEFUN (memset, (m, c, n),
 
   return m;
 }
+#endif

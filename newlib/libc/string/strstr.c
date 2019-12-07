@@ -1,3 +1,5 @@
+// ESP8266 has this in ROM
+#if 0
 /*
 FUNCTION
 	<<strstr>>---find string segment
@@ -119,3 +121,4 @@ _DEFUN (strstr, (searchee, lookfor),
 			      (const unsigned char *) lookfor, needle_len);
 #endif /* compilation for speed */
 }
+#endif

@@ -1,3 +1,5 @@
+// ESP8266 has this in ROM
+#if 0
 /*
 FUNCTION
         <<memcpy>>---copy memory regions
@@ -109,3 +111,4 @@ _DEFUN (memcpy, (dst0, src0, len0),
   return dst0;
 #endif /* not PREFER_SIZE_OVER_SPEED */
 }
+#endif

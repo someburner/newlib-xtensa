@@ -1,3 +1,5 @@
+//ESP8266 has this in ROM
+#if 0
 /*
 FUNCTION
 	<<strlen>>---character string length
@@ -86,3 +88,4 @@ _DEFUN (strlen, (str),
     str++;
   return str - start;
 }
+#endif
