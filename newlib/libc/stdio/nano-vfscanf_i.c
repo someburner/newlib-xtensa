@@ -217,6 +217,8 @@ match_end:
       ul = (*ccfn) (rptr, pdata->buf, (char **) NULL, pdata->base);
       if (pdata->flags & POINTER)
 	*GET_ARG (N, *ap, void **) = (void *) (uintptr_t) ul;
+      else if (pdata->flags & CHAR)
+	*GET_ARG (N, *ap, char *) = ul;
       else if (pdata->flags & SHORT)
 	*GET_ARG (N, *ap, short *) = ul;
       else if (pdata->flags & LONG)

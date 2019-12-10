@@ -207,6 +207,8 @@ number:
 	*GET_ARG (N, *ap, long_ptr_t) = pdata->ret;
       else if (pdata->flags & SHORTINT)
 	*GET_ARG (N, *ap, short_ptr_t) = pdata->ret;
+      else if (pdata->flags & CHARINT)
+	*GET_ARG (N, *ap, char_ptr_t) = pdata->ret;
       else
 	*GET_ARG (N, *ap, int_ptr_t) = pdata->ret;
     case '\0':

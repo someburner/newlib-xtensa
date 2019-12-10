@@ -145,8 +145,7 @@ typedef short *  short_ptr_t;
 #define QUADINT		LONGINT
 #define FPT		0x400		/* Floating point number.  */
 #define LONGLONG	0x800		/* Long long */
-/* Define as 0, to make SARG and UARG occupy fewer instructions.  */
-# define CHARINT	0
+#define CHARINT		0x200
 
 /* Macros to support positional arguments.  */
 #define GET_ARG(n, ap, type) (va_arg ((ap), type))

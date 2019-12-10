@@ -621,6 +621,13 @@ _DEFUN(_VFPRINTF_R, (data, fp, fmt0, ap),
           prt_data.flags &= ~LONGINT;
           fmt++;
         }
+      /* Handle hh case */
+      if ((prt_data.flags & SHORTINT) && (pgm_read_byte(fmt) == 'h'))
+        {
+          prt_data.flags |= CHARINT;
+          prt_data.flags &= ~SHORTINT;
+          fmt++;
+        }
 
       /* Convert %z and %t into a no-op as size_t == int on ESP8266 */
       if ((pgm_read_byte(fmt) == 'z') || (pgm_read_byte(fmt) == 't'))
