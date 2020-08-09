@@ -183,7 +183,7 @@ void* memccpy_P(void* dest, PGM_VOID_P src, int c, size_t count)
 
 void *memmove_P(void *dest, const void *src, size_t n)
 {
-    if ((const char *)src >= (const char *)0x40000000)
+    if ( ((const char *)src >= (const char *)0x40000000) && ((const char *)dest < (const char *)0x40000000) )
         return memcpy_P(dest, src, n);
     else
         return memmove(dest, src, n);
