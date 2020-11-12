@@ -53,10 +53,25 @@ _DEFUN (_tzset_r, (reent_ptr),
   if (*tzenv == ':')
     ++tzenv;  
 
-  if (sscanf (tzenv, "%10[^0-9,+-]%n", __tzname_std, &n) <= 0)
+  if (tzenv[0] == '<')
     {
-      TZ_UNLOCK;
-      return;
+      /* This is of the form "<[+-]nn>" so needs a different parsing */
+      if (sscanf (tzenv, "%9[^>]%n", __tzname_std, &n) <= 0)
+        {
+          TZ_UNLOCK;
+          return;
+        }
+      /* Include the final > and skip it */
+      strcat (__tzname_std, ">");
+      n++;
+    }
+  else
+    {
+      if (sscanf (tzenv, "%10[^0-9,+-]%n", __tzname_std, &n) <= 0)
+        {
+          TZ_UNLOCK;
+          return;
+        }
     }
  
   tzenv += n;
@@ -83,16 +98,35 @@ _DEFUN (_tzset_r, (reent_ptr),
   _tzname[0] = __tzname_std;
   tzenv += n;
   
-  if (sscanf (tzenv, "%10[^0-9,+-]%n", __tzname_dst, &n) <= 0)
-    { /* No dst */
-      _tzname[1] = _tzname[0];
-      _timezone = tz->__tzrule[0].offset;
-      _daylight = 0;
-      TZ_UNLOCK;
-      return;
+  if (tzenv[0] == '<')
+    {
+      /* This is of the form "<[+-]nn>" so needs a different parsing */
+      if (sscanf (tzenv, "%9[^>]%n", __tzname_dst, &n) <= 0)
+        { /* No dst */
+          _tzname[1] = _tzname[0];
+          _timezone = tz->__tzrule[0].offset;
+          _daylight = 0;
+          TZ_UNLOCK;
+          return;
+        }
+      /* Include the final > and skip it */
+      strcat (__tzname_dst, ">");
+      n++;
+      _tzname[1] = __tzname_dst;
     }
   else
-    _tzname[1] = __tzname_dst;
+    {
+      if (sscanf (tzenv, "%10[^0-9,+-]%n", __tzname_dst, &n) <= 0)
+        { /* No dst */
+          _tzname[1] = _tzname[0];
+          _timezone = tz->__tzrule[0].offset;
+          _daylight = 0;
+          TZ_UNLOCK;
+          return;
+        }
+      else
+        _tzname[1] = __tzname_dst;
+    }
 
   tzenv += n;
 
