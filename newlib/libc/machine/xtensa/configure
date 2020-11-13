@@ -2194,7 +2194,6 @@ else
   STRIP="$ac_cv_prog_STRIP"
 fi
 
-fi
 INSTALL_STRIP_PROGRAM="\$(install_sh) -c -s"
 
 { $as_echo "$as_me:$LINENO: checking for a thread-safe mkdir -p" >&5
