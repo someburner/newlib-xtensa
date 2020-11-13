@@ -29,5 +29,7 @@ doc:
 	  fi; \
 	done
 
+docbook:
+
 ACLOCAL_AMFLAGS = -I ../.. -I ../../..
 CONFIG_STATUS_DEPENDENCIES = $(newlib_basedir)/configure.host

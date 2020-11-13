@@ -95,7 +95,7 @@
 */
 
 _Bigint *
-_DEFUN (Balloc, (ptr, k), struct _reent *ptr _AND int k)
+Balloc (struct _reent *ptr, int k)
 {
   int x;
   _Bigint *rv ;
@@ -134,7 +134,7 @@ _DEFUN (Balloc, (ptr, k), struct _reent *ptr _AND int k)
 }
 
 void
-_DEFUN (Bfree, (ptr, v), struct _reent *ptr _AND _Bigint * v)
+Bfree (struct _reent *ptr, _Bigint * v)
 {
   _REENT_CHECK_MP(ptr);
   if (v)
@@ -145,10 +145,9 @@ _DEFUN (Bfree, (ptr, v), struct _reent *ptr _AND _Bigint * v)
 }
 
 _Bigint *
-_DEFUN (multadd, (ptr, b, m, a),
-	struct _reent *ptr _AND
-	_Bigint * b _AND
-	int m _AND
+multadd (struct _reent *ptr,
+	_Bigint * b,
+	int m,
 	int a)
 {
   int i, wds;
@@ -180,7 +179,7 @@ _DEFUN (multadd, (ptr, b, m, a),
     {
       if (wds >= b->_maxwds)
 	{
-	  b1 = Balloc (ptr, b->_k + 1);
+	  b1 = eBalloc (ptr, b->_k + 1);
 	  Bcopy (b1, b);
 	  Bfree (ptr, b);
 	  b = b1;
@@ -192,11 +191,10 @@ _DEFUN (multadd, (ptr, b, m, a),
 }
 
 _Bigint *
-_DEFUN (s2b, (ptr, s, nd0, nd, y9),
-	struct _reent * ptr _AND
-	_CONST char *s _AND
-	int nd0 _AND
-	int nd _AND
+s2b (struct _reent * ptr,
+	const char *s,
+	int nd0,
+	int nd,
 	__ULong y9)
 {
   _Bigint *b;
@@ -206,11 +204,11 @@ _DEFUN (s2b, (ptr, s, nd0, nd, y9),
   x = (nd + 8) / 9;
   for (k = 0, y = 1; x > y; y <<= 1, k++);
 #ifdef Pack_32
-  b = Balloc (ptr, k);
+  b = eBalloc (ptr, k);
   b->_x[0] = y9;
   b->_wds = 1;
 #else
-  b = Balloc (ptr, k + 1);
+  b = eBalloc (ptr, k + 1);
   b->_x[0] = y9 & 0xffff;
   b->_wds = (b->_x[1] = y9 >> 16) ? 2 : 1;
 #endif
@@ -232,8 +230,7 @@ _DEFUN (s2b, (ptr, s, nd0, nd, y9),
 }
 
 int
-_DEFUN (hi0bits,
-	(x), register __ULong x)
+hi0bits (register __ULong x)
 {
   register int k = 0;
 
@@ -267,7 +264,7 @@ _DEFUN (hi0bits,
 }
 
 int
-_DEFUN (lo0bits, (y), __ULong *y)
+lo0bits (__ULong *y)
 {
   register int k;
   register __ULong x = *y;
@@ -317,18 +314,18 @@ _DEFUN (lo0bits, (y), __ULong *y)
 }
 
 _Bigint *
-_DEFUN (i2b, (ptr, i), struct _reent * ptr _AND int i)
+i2b (struct _reent * ptr, int i)
 {
   _Bigint *b;
 
-  b = Balloc (ptr, 1);
+  b = eBalloc (ptr, 1);
   b->_x[0] = i;
   b->_wds = 1;
   return b;
 }
 
 _Bigint *
-_DEFUN (mult, (ptr, a, b), struct _reent * ptr _AND _Bigint * a _AND _Bigint * b)
+mult (struct _reent * ptr, _Bigint * a, _Bigint * b)
 {
   _Bigint *c;
   int k, wa, wb, wc;
@@ -350,7 +347,7 @@ _DEFUN (mult, (ptr, a, b), struct _reent * ptr _AND _Bigint * a _AND _Bigint * b
   wc = wa + wb;
   if (wc > a->_maxwds)
     k++;
-  c = Balloc (ptr, k);
+  c = eBalloc (ptr, k);
   for (x = c->_x, xa = x + wc; x < xa; x++)
     *x = 0;
   xa = a->_x;
@@ -420,12 +417,11 @@ _DEFUN (mult, (ptr, a, b), struct _reent * ptr _AND _Bigint * a _AND _Bigint * b
 }
 
 _Bigint *
-_DEFUN (pow5mult,
-	(ptr, b, k), struct _reent * ptr _AND _Bigint * b _AND int k)
+pow5mult (struct _reent * ptr, _Bigint * b, int k)
 {
   _Bigint *b1, *p5, *p51;
   int i;
-  static _CONST int p05[3] PROGMEM = {5, 25, 125};
+  static const int p05[3] PROGMEM = {5, 25, 125};
 
   if ((i = k & 3) != 0)
     b = multadd (ptr, b, p05[i - 1], 0);
@@ -460,7 +456,7 @@ _DEFUN (pow5mult,
 }
 
 _Bigint *
-_DEFUN (lshift, (ptr, b, k), struct _reent * ptr _AND _Bigint * b _AND int k)
+lshift (struct _reent * ptr, _Bigint * b, int k)
 {
   int i, k1, n, n1;
   _Bigint *b1;
@@ -475,7 +471,7 @@ _DEFUN (lshift, (ptr, b, k), struct _reent * ptr _AND _Bigint * b _AND int k)
   n1 = n + b->_wds + 1;
   for (i = b->_maxwds; n1 > i; i <<= 1)
     k1++;
-  b1 = Balloc (ptr, k1);
+  b1 = eBalloc (ptr, k1);
   x1 = b1->_x;
   for (i = 0; i < n; i++)
     *x1++ = 0;
@@ -520,7 +516,7 @@ _DEFUN (lshift, (ptr, b, k), struct _reent * ptr _AND _Bigint * b _AND int k)
 }
 
 int
-_DEFUN (cmp, (a, b), _Bigint * a _AND _Bigint * b)
+cmp (_Bigint * a, _Bigint * b)
 {
   __ULong *xa, *xa0, *xb, *xb0;
   int i, j;
@@ -550,8 +546,8 @@ _DEFUN (cmp, (a, b), _Bigint * a _AND _Bigint * b)
 }
 
 _Bigint *
-_DEFUN (diff, (ptr, a, b), struct _reent * ptr _AND
-	_Bigint * a _AND _Bigint * b)
+diff (struct _reent * ptr,
+	_Bigint * a, _Bigint * b)
 {
   _Bigint *c;
   int i, wa, wb;
@@ -564,7 +560,7 @@ _DEFUN (diff, (ptr, a, b), struct _reent * ptr _AND
   i = cmp (a, b);
   if (!i)
     {
-      c = Balloc (ptr, 0);
+      c = eBalloc (ptr, 0);
       c->_wds = 1;
       c->_x[0] = 0;
       return c;
@@ -578,7 +574,7 @@ _DEFUN (diff, (ptr, a, b), struct _reent * ptr _AND
     }
   else
     i = 0;
-  c = Balloc (ptr, a->_k);
+  c = eBalloc (ptr, a->_k);
   c->_sign = i;
   wa = a->_wds;
   xa = a->_x;
@@ -634,7 +630,7 @@ _DEFUN (diff, (ptr, a, b), struct _reent * ptr _AND
 }
 
 double
-_DEFUN (ulp, (_x), double _x)
+ulp (double _x)
 {
   union double_union x, a;
   register __Long L;
@@ -680,8 +676,7 @@ _DEFUN (ulp, (_x), double _x)
 }
 
 double
-_DEFUN (b2d, (a, e),
-	_Bigint * a _AND int *e)
+b2d (_Bigint * a, int *e)
 {
   __ULong *xa, *xa0, w, y, z;
   int k;
@@ -757,11 +752,9 @@ ret_d:
 }
 
 _Bigint *
-_DEFUN (d2b,
-	(ptr, _d, e, bits),
-	struct _reent * ptr _AND
-	double _d _AND
-	int *e _AND
+d2b (struct _reent * ptr,
+	double _d,
+	int *e,
 	int *bits)
 
 {
@@ -783,9 +776,9 @@ _DEFUN (d2b,
 #endif
 
 #ifdef Pack_32
-  b = Balloc (ptr, 1);
+  b = eBalloc (ptr, 1);
 #else
-  b = Balloc (ptr, 2);
+  b = eBalloc (ptr, 2);
 #endif
   x = b->_x;
 
@@ -912,7 +905,7 @@ _DEFUN (d2b,
 #undef d1
 
 double
-_DEFUN (ratio, (a, b), _Bigint * a _AND _Bigint * b)
+ratio (_Bigint * a, _Bigint * b)
 
 {
   union double_union da, db;
@@ -952,7 +945,7 @@ _DEFUN (ratio, (a, b), _Bigint * a _AND _Bigint * b)
 }
 
 
-_CONST double
+const double
   tens[] PROGMEM =
 {
   1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9,
@@ -962,23 +955,22 @@ _CONST double
 };
 
 #if !defined(_DOUBLE_IS_32BITS) && !defined(__v800)
-_CONST double bigtens[] PROGMEM =
+const double bigtens[] PROGMEM =
 {1e16, 1e32, 1e64, 1e128, 1e256};
 
-_CONST double tinytens[] PROGMEM =
+const double tinytens[] PROGMEM =
 {1e-16, 1e-32, 1e-64, 1e-128, 1e-256};
 #else
-_CONST double bigtens[] PROGMEM =
+const double bigtens[] PROGMEM =
 {1e16, 1e32};
 
-_CONST double tinytens[] PROGMEM=
+const double tinytens[] PROGMEM =
 {1e-16, 1e-32};
 #endif
 
 
 double
-_DEFUN (_mprec_log10, (dig),
-	int dig)
+_mprec_log10 (int dig)
 {
   double v = 1.0;
   if (dig < 24)
@@ -992,9 +984,8 @@ _DEFUN (_mprec_log10, (dig),
 }
 
 void
-_DEFUN (copybits, (c, n, b),
-	__ULong *c _AND
-	int n _AND
+copybits (__ULong *c,
+	int n,
 	_Bigint *b)
 {
 	__ULong *ce, *x, *xe;
@@ -1021,8 +1012,7 @@ _DEFUN (copybits, (c, n, b),
 }
 
 __ULong
-_DEFUN (any_on, (b, k),
-	_Bigint *b _AND
+any_on (_Bigint *b,
 	int k)
 {
 	int n, nwds;

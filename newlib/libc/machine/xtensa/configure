@@ -716,23 +716,24 @@ SHELL'
 ac_subst_files=''
 ac_user_opts='
 enable_option_checking
-enable_multilib
-enable_target_optspace
-enable_malloc_debugging
-enable_newlib_multithread
-enable_newlib_iconv
-enable_newlib_elix_level
-enable_newlib_io_float
-enable_newlib_supplied_syscalls
-enable_dependency_tracking
-enable_maintainer_mode
+with_cross_bootstrap
+with_windows_headers
+with_windows_libs
 '
       ac_precious_vars='build_alias
 host_alias
 target_alias
-CCAS
-CCASFLAGS'
-
+CC
+CFLAGS
+LDFLAGS
+LIBS
+CPPFLAGS
+CXX
+CXXFLAGS
+CCC
+CPP'
+ac_subdirs_all='cygwin cygserver doc
+utils'
 
 # Initialize some variables set by options.
 ac_init_help=
@@ -1358,22 +1359,15 @@ if test -n "$ac_init_help"; then
    esac
   cat <<\_ACEOF
 
-Optional Features:
-  --disable-option-checking  ignore unrecognized --enable/--with options
-  --disable-FEATURE       do not include FEATURE (same as --enable-FEATURE=no)
-  --enable-FEATURE[=ARG]  include FEATURE [ARG=yes]
-  --enable-multilib         build many library versions (default)
-  --enable-target-optspace  optimize for space
-  --enable-malloc-debugging indicate malloc debugging requested
-  --enable-newlib-multithread        enable support for multiple threads
-  --enable-newlib-iconv     enable iconv library support
-  --enable-newlib-elix-level         supply desired elix library level (1-4)
-  --disable-newlib-io-float disable printf/scanf family float support
-  --disable-newlib-supplied-syscalls disable newlib from supplying syscalls
-  --disable-dependency-tracking  speeds up one-time build
-  --enable-dependency-tracking   do not reject slow dependency extractors
-  --enable-maintainer-mode  enable make rules and dependencies not useful
-			  (and sometimes confusing) to the casual installer
+Optional Packages:
+  --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
+  --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
+  --with-cross-bootstrap  do not build programs using the mingw toolchain or
+                          check for mingw libraries (useful for bootstrapping
+                          a cross-compiler)
+  --with-windows-headers=DIR
+                          specify where the windows includes are located
+  --with-windows-libs=DIR specify where the windows libraries are located
 
 Some influential environment variables:
   CCAS        assembler compiler command (defaults to CC)
@@ -2103,15 +2097,15 @@ if test x"${install_sh}" != xset; then
   esac
 fi
 
-# Installed binaries are usually stripped using `strip' when the user
-# run `make install-strip'.  However `strip' might not be the right
-# tool to use in cross-compilation environments, therefore Automake
-# will honor the `STRIP' environment variable to overrule this program.
-if test "$cross_compiling" != no; then
-  if test -n "$ac_tool_prefix"; then
-  # Extract the first word of "${ac_tool_prefix}strip", so it can be a program name with args.
-set dummy ${ac_tool_prefix}strip; ac_word=$2
-{ $as_echo "$as_me:$LINENO: checking for $ac_word" >&5
+ac_ext=c
+ac_cpp='$CPP $CPPFLAGS'
+ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
+ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+ac_compiler_gnu=$ac_cv_c_compiler_gnu
+if test -n "$ac_tool_prefix"; then
+  # Extract the first word of "${ac_tool_prefix}gcc", so it can be a program name with args.
+set dummy ${ac_tool_prefix}gcc; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
 $as_echo_n "checking for $ac_word... " >&6; }
 if test "${ac_cv_prog_STRIP+set}" = set; then
   $as_echo_n "(cached) " >&6
@@ -3552,6 +3546,14 @@ test "${CCAS+set}" = set || CCAS=$CC
 test "${CCASFLAGS+set}" = set || CCASFLAGS=$CFLAGS
 
 
+# Check whether --with-cross-bootstrap was given.
+if test "${with_cross_bootstrap+set}" = set; then :
+  withval=$with_cross_bootstrap;
+else
+  with_cross_bootstrap=no
+fi
+
+
 
 
 # We need AC_EXEEXT to keep automake happy in cygnus mode.  However,
@@ -3568,15 +3570,15 @@ fi
 
 . ${newlib_basedir}/configure.host
 
-newlib_cflags="${newlib_cflags} -fno-builtin"
+if test "x$with_cross_bootstrap" != "xyes"; then
 
-NEWLIB_CFLAGS=${newlib_cflags}
+NEWLIB_CFLAGS="${newlib_cflags} -fno-builtin"
 
 
 NO_INCLUDE_LIST=${noinclude}
 
 
-LDFLAGS=${ldflags}
+fi
 
 
  if test x${newlib_elix_level} = x0; then
@@ -3637,6 +3639,12 @@ OBJEXT=${oext}
 
 
 
+subdirs="$subdirs cygwin cygserver doc"
+
+if test "x$with_cross_bootstrap" != "xyes"; then
+    subdirs="$subdirs utils"
+
+fi
 
 
 

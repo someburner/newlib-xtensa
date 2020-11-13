@@ -11,7 +11,7 @@ INDEX
 INDEX
 	fcvtf
 
-ANSI_SYNOPSIS
+SYNOPSIS
 	#include <stdlib.h>
 
 	char *ecvt(double <[val]>, int <[chars]>, int *<[decpt]>, int *<[sgn]>);
@@ -21,31 +21,6 @@ ANSI_SYNOPSIS
                    int *<[decpt]>, int *<[sgn]>);
 	char *fcvtf(float <[val]>, int <[decimals]>, 
                     int *<[decpt]>, int *<[sgn]>);
-
-TRAD_SYNOPSIS
-	#include <stdlib.h>
-
-	char *ecvt(<[val]>, <[chars]>, <[decpt]>, <[sgn]>);
-	double <[val]>;
-	int <[chars]>;
-	int *<[decpt]>;
-	int *<[sgn]>;
-	char *ecvtf(<[val]>, <[chars]>, <[decpt]>, <[sgn]>);
-	float <[val]>;
-	int <[chars]>;
-	int *<[decpt]>;
-	int *<[sgn]>;
-
-	char *fcvt(<[val]>, <[decimals]>, <[decpt]>, <[sgn]>);
-	double <[val]>;
-	int <[decimals]>;
-	int *<[decpt]>;
-	int *<[sgn]>;
-	char *fcvtf(<[val]>, <[decimals]>, <[decpt]>, <[sgn]>);
-	float <[val]>;
-	int <[decimals]>;
-	int *<[decpt]>;
-	int *<[sgn]>;
 
 DESCRIPTION
 <<ecvt>> and <<fcvt>> produce (null-terminated) strings of digits
@@ -84,34 +59,22 @@ Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
 
 NEWPAGE
 FUNCTION
-<<gvcvt>>, <<gcvtf>>---format double or float as string
+<<gcvt>>, <<gcvtf>>---format double or float as string
 
 INDEX
 	gcvt
 INDEX
 	gcvtf
 
-ANSI_SYNOPSIS
+SYNOPSIS
 	#include <stdlib.h>
 
 	char *gcvt(double <[val]>, int <[precision]>, char *<[buf]>);
 	char *gcvtf(float <[val]>, int <[precision]>, char *<[buf]>);
 
-TRAD_SYNOPSIS
-	#include <stdlib.h>
-
-	char *gcvt(<[val]>, <[precision]>, <[buf]>);
-	double <[val]>;
-	int <[precision]>;
-	char *<[buf]>;
-	char *gcvtf(<[val]>, <[precision]>, <[buf]>);
-	float <[val]>;
-	int <[precision]>;
-	char *<[buf]>;
-
 DESCRIPTION
 <<gcvt>> writes a fully formatted number as a null-terminated
-string in the buffer <<*<[buf]>>>.  <<gdvtf>> produces corresponding
+string in the buffer <<*<[buf]>>>.  <<gcvtf>> produces corresponding
 character representations of <<float>> numbers.
 
 <<gcvt>> uses the same rules as the <<printf>> format
@@ -131,27 +94,30 @@ Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
 <<lseek>>, <<read>>, <<sbrk>>, <<write>>.
 */
 
+#define _XOPEN_SOURCE
+#define _XOPEN_SOURCE_EXTENDED
 #include <_ansi.h>
 #include <reent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "local.h"
 
+char *	ecvtbuf (double, int, int*, int*, char *);
+char *	fcvtbuf (double, int, int*, int*, char *);
+
 char *
-_DEFUN (fcvt, (d, ndigit, decpt, sign),
-	double d _AND
-	int ndigit _AND
-	int *decpt _AND
+fcvt (double d,
+	int ndigit,
+	int *decpt,
 	int *sign)
 {
   return fcvtbuf (d, ndigit, decpt, sign, NULL);
 }
 
 char *
-_DEFUN (fcvtf, (d, ndigit, decpt, sign),
-	float d _AND
-	int ndigit _AND
-	int *decpt _AND
+fcvtf (float d,
+	int ndigit,
+	int *decpt,
 	int *sign)
 {
   return fcvt ((float) d, ndigit, decpt, sign);
@@ -159,41 +125,8 @@ _DEFUN (fcvtf, (d, ndigit, decpt, sign),
 
 
 char *
-_DEFUN (gcvtf, (d, ndigit, buf),
-	float d _AND
-	int ndigit _AND
-	char *buf)
-{
-  double asd = d;
-  return gcvt (asd, ndigit, buf);
-}
-
-
-char *
-_DEFUN (ecvt, (d, ndigit, decpt, sign),
-	double d _AND
-	int ndigit _AND
-	int *decpt _AND
-	int *sign)
-{
-  return ecvtbuf (d, ndigit, decpt, sign, NULL);
-}
-
-char *
-_DEFUN (ecvtf, (d, ndigit, decpt, sign),
-	float d _AND
-	int ndigit _AND
-	int *decpt _AND
-	int *sign)
-{
-  return ecvt ((double) d, ndigit, decpt, sign);
-}
-
-
-char *
-_DEFUN (gcvt, (d, ndigit, buf),
-	double d _AND
-	int ndigit _AND
+gcvt (double d,
+	int ndigit,
 	char *buf)
 {
   char *tbuf = buf;
@@ -203,4 +136,33 @@ _DEFUN (gcvt, (d, ndigit, buf),
     ndigit--;
   }
   return (_gcvt (_REENT, d, ndigit, buf, 'g', 0) ? tbuf : 0);
+}
+
+
+char *
+gcvtf (float d,
+	int ndigit,
+	char *buf)
+{
+  double asd = d;
+  return gcvt (asd, ndigit, buf);
+}
+
+
+char *
+ecvt (double d,
+	int ndigit,
+	int *decpt,
+	int *sign)
+{
+  return ecvtbuf (d, ndigit, decpt, sign, NULL);
+}
+
+char *
+ecvtf (float d,
+	int ndigit,
+	int *decpt,
+	int *sign)
+{
+  return ecvt ((double) d, ndigit, decpt, sign);
 }

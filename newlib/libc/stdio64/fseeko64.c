@@ -24,24 +24,11 @@ INDEX
 INDEX
 	_fseeko64_r
 
-ANSI_SYNOPSIS
+SYNOPSIS
 	#include <stdio.h>
-	int fseeko64(FILE *<[fp]>, _off64_t <[offset]>, int <[whence]>)
+	int fseeko64(FILE *<[fp]>, _off64_t <[offset]>, int <[whence]>);
 	int _fseeko64_r (struct _reent *<[ptr]>, FILE *<[fp]>,
-                         _off64_t <[offset]>, int <[whence]>)
-TRAD_SYNOPSIS
-	#include <stdio.h>
-
-	int fseeko64(<[fp]>, <[offset]>, <[whence]>)
-	FILE *<[fp]>;
-	_off64_t <[offset]>;
-	int <[whence]>;
-
-	int _fseeko64_r (<[ptr]>, <[fp]>, <[offset]>, <[whence]>)
-	struct _reent *<[ptr]>;
-	FILE *<[fp]>;
-	_off64_t <[offset]>;
-	int <[whence]>;
+                         _off64_t <[offset]>, int <[whence]>);
 
 DESCRIPTION
 Objects of type <<FILE>> can have a ``position'' that records how much
@@ -98,13 +85,12 @@ Supporting OS subroutines required: <<close>>, <<fstat64>>, <<isatty>>,
  */
 
 _off64_t
-_DEFUN (_fseeko64_r, (ptr, fp, offset, whence),
-     struct _reent *ptr _AND
-     register FILE *fp _AND
-     _off64_t offset _AND
+_fseeko64_r (struct _reent *ptr,
+     register FILE *fp,
+     _off64_t offset,
      int whence)
 {
-  _fpos64_t _EXFNPTR(seekfn, (struct _reent *, void *, _fpos64_t, int));
+  _fpos64_t (*seekfn) (struct _reent *, void *, _fpos64_t, int);
   _fpos64_t target, curoff;
   size_t n;
 
@@ -156,31 +142,12 @@ _DEFUN (_fseeko64_r, (ptr, fp, offset, whence),
   switch (whence)
     {
     case SEEK_CUR:
-      /*
-       * In order to seek relative to the current stream offset,
-       * we have to first find the current stream offset a la
-       * ftell (see ftell for details).
-       */
-      _fflush_r (ptr, fp);   /* may adjust seek offset on append stream */
-      if (fp->_flags & __SOFF)
-	curoff = fp->_offset;
-      else
-	{
-	  curoff = seekfn (ptr, fp->_cookie, (_fpos64_t) 0, SEEK_CUR);
-	  if (curoff == -1L)
-	    {
-	      _newlib_flockfile_exit(fp);
-	      return EOF;
-	    }
-	}
-      if (fp->_flags & __SRD)
-	{
-	  curoff -= fp->_r;
-	  if (HASUB (fp))
-	    curoff -= fp->_ur;
-	}
-      else if (fp->_flags & __SWR && fp->_p != NULL)
-	curoff += fp->_p - fp->_bf._base;
+      curoff = _ftello64_r(ptr, fp);
+      if (curoff == -1L)
+        {
+          _newlib_flockfile_exit (fp);
+          return EOF;
+        }
 
       offset += curoff;
       whence = SEEK_SET;
@@ -355,9 +322,8 @@ dumb:
 #ifndef _REENT_ONLY
 
 _off64_t
-_DEFUN (fseeko64, (fp, offset, whence),
-     register FILE *fp _AND
-     _off64_t offset _AND
+fseeko64 (register FILE *fp,
+     _off64_t offset,
      int whence)
 {
   return _fseeko64_r (_REENT, fp, offset, whence);

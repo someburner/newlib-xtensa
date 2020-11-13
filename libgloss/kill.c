@@ -21,8 +21,7 @@
 #ifndef REENTRANT_SYSCALLS_PROVIDED
 
 int
-_DEFUN (kill, (pid, sig),
-        int pid _AND 
+kill (int pid,
         int sig)
 {
   if(pid == __MYPID)

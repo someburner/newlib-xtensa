@@ -28,7 +28,7 @@ INDEX
 INDEX
 	_fseeko_r
 
-ANSI_SYNOPSIS
+SYNOPSIS
 	#include <stdio.h>
 	int fseek(FILE *<[fp]>, long <[offset]>, int <[whence]>)
 	int fseeko(FILE *<[fp]>, off_t <[offset]>, int <[whence]>)
@@ -36,30 +36,6 @@ ANSI_SYNOPSIS
 	             long <[offset]>, int <[whence]>)
 	int _fseeko_r(struct _reent *<[ptr]>, FILE *<[fp]>,
 	             off_t <[offset]>, int <[whence]>)
-
-TRAD_SYNOPSIS
-	#include <stdio.h>
-	int fseek(<[fp]>, <[offset]>, <[whence]>)
-	FILE *<[fp]>;
-	long <[offset]>;
-	int <[whence]>;
-
-	int fseeko(<[fp]>, <[offset]>, <[whence]>)
-	FILE *<[fp]>;
-	off_t <[offset]>;
-	int <[whence]>;
-
-	int _fseek_r(<[ptr]>, <[fp]>, <[offset]>, <[whence]>)
-	struct _reent *<[ptr]>;
-	FILE *<[fp]>;
-	long <[offset]>;
-	int <[whence]>;
-
-	int _fseeko_r(<[ptr]>, <[fp]>, <[offset]>, <[whence]>)
-	struct _reent *<[ptr]>;
-	FILE *<[fp]>;
-	off_t <[offset]>;
-	int <[whence]>;
 
 DESCRIPTION
 Objects of type <<FILE>> can have a ``position'' that records how much
@@ -117,13 +93,12 @@ Supporting OS subroutines required: <<close>>, <<fstat>>, <<isatty>>,
  */
 
 int
-_DEFUN(_fseeko_r, (ptr, fp, offset, whence),
-       struct _reent *ptr _AND
-       register FILE *fp  _AND
-       _off_t offset      _AND
+_fseeko_r (struct _reent *ptr,
+       register FILE *fp,
+       _off_t offset,
        int whence)
 {
-  _fpos_t _EXFNPTR(seekfn, (struct _reent *, _PTR, _fpos_t, int));
+  _fpos_t (*seekfn) (struct _reent *, void *, _fpos_t, int);
   _fpos_t target;
   _fpos_t curoff = 0;
   size_t n;
@@ -166,31 +141,12 @@ _DEFUN(_fseeko_r, (ptr, fp, offset, whence),
   switch (whence)
     {
     case SEEK_CUR:
-      /*
-       * In order to seek relative to the current stream offset,
-       * we have to first find the current stream offset a la
-       * ftell (see ftell for details).
-       */
-      _fflush_r (ptr, fp);   /* may adjust seek offset on append stream */
-      if (fp->_flags & __SOFF)
-	curoff = fp->_offset;
-      else
-	{
-	  curoff = seekfn (ptr, fp->_cookie, (_fpos_t) 0, SEEK_CUR);
-	  if (curoff == -1L)
-	    {
-	      _newlib_flockfile_exit (fp);
-	      return EOF;
-	    }
-	}
-      if (fp->_flags & __SRD)
-	{
-	  curoff -= fp->_r;
-	  if (HASUB (fp))
-	    curoff -= fp->_ur;
-	}
-      else if (fp->_flags & __SWR && fp->_p != NULL)
-	curoff += fp->_p - fp->_bf._base;
+      curoff = _ftello_r(ptr, fp);
+      if (curoff == -1L)
+        {
+          _newlib_flockfile_exit (fp);
+          return EOF;
+        }
 
       offset += curoff;
       whence = SEEK_SET;
@@ -383,9 +339,8 @@ dumb:
 #ifndef _REENT_ONLY
 
 int
-_DEFUN(fseeko, (fp, offset, whence),
-       register FILE *fp _AND
-       _off_t offset     _AND
+fseeko (register FILE *fp,
+       _off_t offset,
        int whence)
 {
   return _fseeko_r (_REENT, fp, offset, whence);

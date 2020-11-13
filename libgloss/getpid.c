@@ -21,8 +21,7 @@
 #ifndef REENTRANT_SYSCALLS_PROVIDED
 
 int
-_DEFUN (getpid, (),
-        )
+getpid (void)
 {
   return __MYPID;
 }
