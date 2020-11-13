@@ -38,15 +38,11 @@
 #include <strings.h>
 #include <ctype.h>
 #include <stdlib.h>
-#include <sys/pgmspace.h>
-#include "../locale/timelocal.h"
-
-#define _ctloc(x) (_CurrentTimeLocale->x)
-
 #include <errno.h>
 #include <inttypes.h>
 #include <limits.h>
 #include "../locale/setlocale.h"
+#include <sys/pgmspace.h>
 
 #define _ctloc(x) (_CurrentTimeLocale->x)
 
