@@ -14,10 +14,18 @@
 #endif
 
 #if __BSD_VISIBLE
+#ifndef LITTLE_ENDIAN
 #define	LITTLE_ENDIAN	_LITTLE_ENDIAN
+#endif
+#ifndef BIG_ENDIAN
 #define	BIG_ENDIAN	_BIG_ENDIAN
+#endif
+#ifndef PDP_ENDIAN
 #define	PDP_ENDIAN	_PDP_ENDIAN
+#endif
+#ifndef BYTE_ORDER
 #define	BYTE_ORDER	_BYTE_ORDER
+#endif
 #endif
 
 #ifdef __GNUC__
