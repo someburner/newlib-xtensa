@@ -23,29 +23,9 @@ AC_PROG_CC
 AC_PROG_CXX
 AC_PROG_CPP
 AC_LANG(C)
-
-AC_WINDOWS_HEADERS
-if test "x$with_cross_bootstrap" != "xyes"; then
-  AC_WINDOWS_LIBS
-fi
-
 AC_LANG(C++)
 
 AC_CYGWIN_INCLUDES
-
-case "$with_cross_host" in
-  ""|*cygwin*)
-    all_host="all_host"
-    install_host="install_host"
-    ;;
-  *)
-    all_host=
-    install_host=
-    ;;
-esac
-
-AC_SUBST(all_host)
-AC_SUBST(install_host)
 
 AC_CHECK_TOOL(AR, ar, ar)
 AC_CHECK_TOOL(AS, as, as)
@@ -54,8 +34,6 @@ AC_CHECK_TOOL(LD, ld, ld)
 AC_CHECK_TOOL(NM, nm, nm)
 AC_CHECK_TOOL(DLLTOOL, dlltool, dlltool)
 AC_CHECK_TOOL(WINDRES, windres, windres)
-
-AC_PROG_MAKE_SET
 
 AC_ARG_ENABLE(debugging,
 [ --enable-debugging		Build a cygwin DLL which has more consistency checking for debugging],

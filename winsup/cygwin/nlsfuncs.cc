@@ -1420,7 +1420,7 @@ __set_charset_from_locale (const char *locale, char *charset)
       break;
     case 1258:
     default:
-      if (lcid == 0x3c09 		/* en_HK (English/Hong Kong) */
+      if (lcid == 0x3c09		/* en_HK (English/Hong Kong) */
 	  || lcid == 0x200c		/* fr_RE (French/Réunion) */
 	  || lcid == 0x240c		/* fr_CD (French/Congo) */
 	  || lcid == 0x280c		/* fr_SN (French/Senegal) */
@@ -1431,9 +1431,9 @@ __set_charset_from_locale (const char *locale, char *charset)
 	  || lcid == 0x3c0c		/* fr_HT (French/Haiti) */
 	  || lcid == 0x0477		/* so_SO (Somali/Somali) */
 	  || lcid == 0x0430)		/* st_ZA (Sotho/South Africa) */
-      	cs = "ISO-8859-1";
+	cs = "ISO-8859-1";
       else if (lcid == 0x818)		/* ro_MD (Romanian/Moldovia) */
-      	cs = "ISO-8859-2";
+	cs = "ISO-8859-2";
       else if (lcid == 0x043a)		/* mt_MT (Maltese/Malta) */
 	cs = "ISO-8859-3";
       else if (lcid == 0x0481)		/* mi_NZ (Maori/New Zealand) */
@@ -1446,6 +1446,54 @@ __set_charset_from_locale (const char *locale, char *charset)
 	cs = "UTF-8";
     }
   stpcpy (charset, cs);
+}
+
+/* Called from fhandler_tty::setup_locale.  Set a codepage which reflects the
+   internal charset setting.  This is *not* necessarily the Windows
+   codepage connected to a locale by default, so we have to set this
+   up explicitely. */
+UINT
+__eval_codepage_from_internal_charset ()
+{
+  const char *charset = __locale_charset (__get_global_locale ());
+  UINT codepage = CP_UTF8; /* Default UTF8 */
+
+  /* The internal charset names are well defined, so we can use shortcuts. */
+  switch (charset[0])
+    {
+    case 'B': /* BIG5 */
+      codepage = 950;
+      break;
+    case 'C': /* CPxxx */
+      codepage = strtoul (charset + 2, NULL, 10);
+      break;
+    case 'E': /* EUCxx */
+      switch (charset[3])
+	{
+	case 'J': /* EUCJP */
+	  codepage = 20932;
+	  break;
+	case 'K': /* EUCKR */
+	  codepage = 949;
+	  break;
+	case 'C': /* EUCCN */
+	  codepage = 936;
+	  break;
+	}
+      break;
+    case 'G': /* GBK/GB2312 */
+      codepage = 936;
+      break;
+    case 'I': /* ISO-8859-x */
+      codepage = strtoul (charset + 9, NULL, 10) + 28590;
+      break;
+    case 'S': /* SJIS */
+      codepage = 932;
+      break;
+    default: /* All set to UTF8 already */
+      break;
+    }
+  return codepage;
 }
 
 /* This function is called from newlib's loadlocale if the locale identifier
@@ -1542,11 +1590,11 @@ internal_setlocale ()
   if (path && *path)	/* $PATH can be potentially unset. */
     {
       w_path = tp.w_get ();
-      sys_cp_mbstowcs (cygheap->locale.mbtowc, w_path, 32768, path);
+      _sys_mbstowcs (cygheap->locale.mbtowc, w_path, 32768, path);
     }
   w_cwd = tp.w_get ();
   cwdstuff::cwd_lock.acquire ();
-  sys_cp_mbstowcs (cygheap->locale.mbtowc, w_cwd, 32768,
+  _sys_mbstowcs (cygheap->locale.mbtowc, w_cwd, 32768,
 		   cygheap->cwd.get_posix ());
   /* Set charset for internal conversion functions. */
   cygheap->locale.mbtowc = __get_global_locale ()->mbtowc;

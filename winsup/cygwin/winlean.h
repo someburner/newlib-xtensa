@@ -77,7 +77,7 @@ details. */
 /* So-called "Microsoft Account" SIDs (S-1-11-...) have a netbios domain name
    "MicrosoftAccounts".  The new "Application Container SIDs" (S-1-15-...)
    have a netbios domain name "APPLICATION PACKAGE AUTHORITY"
-   
+
    The problem is, DNLEN is 15, but these domain names have a length of 16
    resp. 29 chars :-P  So we override DNLEN here to be 31, so that calls
    to LookupAccountSid/Name don't fail if the buffer is based on DNLEN.
@@ -94,15 +94,25 @@ details. */
 #define GetWindowsDirectoryW dont_use_GetWindowsDirectory
 #define GetWindowsDirectoryA dont_use_GetWindowsDirectory
 
-/* For console with xterm compatible mode */
-/* Not yet defined in Mingw-w64 */
-#ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
-#define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
-#endif /* ENABLE_VIRTUAL_TERMINAL_PROCESSING */
-#ifndef ENABLE_VIRTUAL_TERMINAL_INPUT
-#define ENABLE_VIRTUAL_TERMINAL_INPUT 0x0200
-#endif /* ENABLE_VIRTUAL_TERMINAL_INPUT */
-#ifndef DISABLE_NEWLINE_AUTO_RETURN
-#define DISABLE_NEWLINE_AUTO_RETURN 0x0008
-#endif /* DISABLE_NEWLINE_AUTO_RETURN */
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* For the extended memory API. */
+#if __MINGW64_VERSION_MAJOR < 8
+#error "Version >= 8 of the w32api headers is required"
+#endif
+
+/* VirtualAlloc2 is declared in <w32api/memoryapi.h> if NTDDI_VERSION
+   >= NTDDI_WIN10_RS4 (a compile-time condition).  But we need the
+   declaration unconditionally, even though the function will only be
+   executed on systems that support it (a run-time condition). */
+PVOID WINAPI VirtualAlloc2 (HANDLE, PVOID, SIZE_T, ULONG, ULONG,
+			    PMEM_EXTENDED_PARAMETER, ULONG);
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif /*_WINLEAN_H*/

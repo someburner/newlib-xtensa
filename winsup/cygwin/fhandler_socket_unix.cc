@@ -8,9 +8,17 @@
    Cygwin license.  Please consult the file "CYGWIN_LICENSE" for
    details. */
 
+#include "winsup.h"
+
+GUID __cygwin_socket_guid = {
+  .Data1 = 0xefc1714d,
+  .Data2 = 0x7b19,
+  .Data3 = 0x4407,
+  .Data4 = { 0xba, 0xb3, 0xc5, 0xb1, 0xf9, 0x2c, 0xb8, 0x8c }
+};
+
 #ifdef __WITH_AF_UNIX
 
-#include "winsup.h"
 #include <w32api/winioctl.h>
 #include <asm/byteorder.h>
 #include <unistd.h>
@@ -123,13 +131,6 @@ class af_unix_pkt_hdr_t
 	   af_unix_pkt_hdr_t _p = phdr; \
 	   (void *)(((PBYTE)(_p)) + AF_UNIX_PKT_OFFSETOF_DATA (_p)); \
 	})
-
-GUID __cygwin_socket_guid = {
-  .Data1 = 0xefc1714d,
-  .Data2 = 0x7b19,
-  .Data3 = 0x4407,
-  .Data4 = { 0xba, 0xb3, 0xc5, 0xb1, 0xf9, 0x2c, 0xb8, 0x8c }
-};
 
 /* Some error conditions on pipes have multiple status codes, unfortunately. */
 #define STATUS_PIPE_NO_INSTANCE_AVAILABLE(status)	\
@@ -940,7 +941,11 @@ fhandler_socket_unix::open_pipe (PUNICODE_STRING pipe_name, bool xchg_sock_info)
     {
       set_handle (ph);
       if (xchg_sock_info)
-	send_sock_info (false);
+	{
+	  /* FIXME: Should we check for errors? */
+	  send_sock_info (false);
+	  recv_peer_info ();
+	}
     }
   return status;
 }
@@ -1063,6 +1068,7 @@ fhandler_socket_unix::listen_pipe ()
   IO_STATUS_BLOCK io;
   HANDLE evt = NULL;
   DWORD waitret = WAIT_OBJECT_0;
+  int ret = -1;
 
   io.Status = STATUS_PENDING;
   if (!is_nonblocking () && !(evt = create_event ()))
@@ -1084,9 +1090,11 @@ fhandler_socket_unix::listen_pipe ()
     set_errno (EINTR);
   else if (status == STATUS_PIPE_LISTENING)
     set_errno (EAGAIN);
-  else if (status != STATUS_PIPE_CONNECTED)
+  else if (status == STATUS_SUCCESS || status == STATUS_PIPE_CONNECTED)
+    ret = 0;
+  else
     __seterrno_from_nt_status (status);
-  return (status == STATUS_PIPE_CONNECTED) ? 0 : -1;
+  return ret;
 }
 
 ULONG
@@ -1149,6 +1157,16 @@ fhandler_socket_unix::set_cred ()
   scred->gid = myself->gid;
 }
 
+void
+fhandler_socket_unix::fixup_helper ()
+{
+  if (shmem_handle)
+    reopen_shmem ();
+  connect_wait_thr = NULL;
+  cwt_termination_evt = NULL;
+  cwt_param = NULL;
+}
+
 /* ========================== public methods ========================= */
 
 void
@@ -1158,20 +1176,15 @@ fhandler_socket_unix::fixup_after_fork (HANDLE parent)
   if (backing_file_handle && backing_file_handle != INVALID_HANDLE_VALUE)
     fork_fixup (parent, backing_file_handle, "backing_file_handle");
   if (shmem_handle)
-    {
-      fork_fixup (parent, shmem_handle, "shmem_handle");
-      reopen_shmem ();
-    }
-  connect_wait_thr = NULL;
-  cwt_termination_evt = NULL;
-  cwt_param = NULL;
+    fork_fixup (parent, shmem_handle, "shmem_handle");
+  fixup_helper ();
 }
 
 void
 fhandler_socket_unix::fixup_after_exec ()
 {
   if (!close_on_exec ())
-    fixup_after_fork (NULL);
+    fixup_helper ();
 }
 
 void
@@ -1201,12 +1214,6 @@ fhandler_socket_unix::dup (fhandler_base *child, int flags)
       return -1;
     }
   fhandler_socket_unix *fhs = (fhandler_socket_unix *) child;
-  if (reopen_shmem () < 0)
-    {
-      __seterrno ();
-      fhs->close ();
-      return -1;
-    }
   if (backing_file_handle && backing_file_handle != INVALID_HANDLE_VALUE
       && !DuplicateHandle (GetCurrentProcess (), backing_file_handle,
 			    GetCurrentProcess (), &fhs->backing_file_handle,
@@ -1219,6 +1226,12 @@ fhandler_socket_unix::dup (fhandler_base *child, int flags)
   if (!DuplicateHandle (GetCurrentProcess (), shmem_handle,
 			GetCurrentProcess (), &fhs->shmem_handle,
 			0, TRUE, DUPLICATE_SAME_ACCESS))
+    {
+      __seterrno ();
+      fhs->close ();
+      return -1;
+    }
+  if (fhs->reopen_shmem () < 0)
     {
       __seterrno ();
       fhs->close ();
@@ -1360,6 +1373,7 @@ fhandler_socket_unix::socket (int af, int type, int protocol, int flags)
   wmem (262144);
   set_addr_family (AF_UNIX);
   set_socket_type (type);
+  set_flags (O_RDWR | O_BINARY);
   if (flags & SOCK_NONBLOCK)
     set_nonblocking (true);
   if (flags & SOCK_CLOEXEC)
@@ -1436,10 +1450,10 @@ fhandler_socket_unix::socketpair (int af, int type, int protocol, int flags,
 fh_open_pipe_failed:
   NtClose (pipe);
 create_pipe_failed:
-  NtUnmapViewOfSection (GetCurrentProcess (), fh->shmem);
+  NtUnmapViewOfSection (NtCurrentProcess (), fh->shmem);
   NtClose (fh->shmem_handle);
 fh_shmem_failed:
-  NtUnmapViewOfSection (GetCurrentProcess (), shmem);
+  NtUnmapViewOfSection (NtCurrentProcess (), shmem);
   NtClose (shmem_handle);
   return -1;
 }
@@ -1814,7 +1828,7 @@ fhandler_socket_unix::close ()
     NtClose (shm);
   param = InterlockedExchangePointer ((PVOID *) &shmem, NULL);
   if (param)
-    NtUnmapViewOfSection (GetCurrentProcess (), param);
+    NtUnmapViewOfSection (NtCurrentProcess (), param);
   return 0;
 }
 
