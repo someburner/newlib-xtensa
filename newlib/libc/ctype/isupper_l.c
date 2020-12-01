@@ -6,6 +6,6 @@
 int
 isupper_l (int c, struct __locale_t *locale)
 {
-  return (__locale_ctype_ptr_l (locale)[c+1] & (_U|_L)) == _U;
+  return (pgm_read_byte(&(__locale_ctype_ptr_l (locale)[c+1])) & (_U|_L)) == _U;
 }
 
