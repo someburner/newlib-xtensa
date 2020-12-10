@@ -1,0 +1,27 @@
+# Run whenever a PR is generated or updated.
+
+name: Newlib-8266 CI
+
+on:
+  pull_request:
+
+
+jobs:
+
+  build:
+    name: Build Newlib
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+    - name: Config and Compile
+      run: |
+        wget https://github.com/earlephilhower/esp-quick-toolchain/releases/download/2.5.0-4/x86_64-linux-gnu.xtensa-lx106-elf-b40a506.1563313032.tar.gz
+        tar xf x86_64-linux-gnu.xtensa-lx106-elf-b40a506.1563313032.tar.gz
+        PATH=$(pwd)/xtensa-lx106-elf/bin/:$PATH ./configure --prefix=/home/earle/Arduino/hardware/esp8266com/esp8266/tools/sdk/libc --with-newlib --enable-multilib --disable-newlib-io-c99-formats --disable-newlib-supplied-syscalls --enable-newlib-nano-formatted-io --enable-newlib-reent-small --enable-target-optspace --program-transform-name="s&^&xtensa-lx106-elf-&" --disable-option-checking --with-target-subdir=xtensa-lx106-elf --target=xtensa-lx106-elf
+        PATH=$(pwd)/xtensa-lx106-elf/bin/:$PATH CROSS_CFLAGS="-fno-builtin -D_NO_EXECVE -D_NO_GLOB -D_NO_WORDEXP -DHAVE_OPENDIR -DSIGNAL_PROVIDED -DABORT_PROVIDED -DMALLOC_PROVIDED -DESP8266" PATH=~/Arduino/hardware/esp8266com/esp8266/tools/xtensa-lx106-elf/bin/:$PATH make -j all
+
