@@ -26,7 +26,7 @@
 
 /* __ieee754_remainder is provided by libgcc */
 
-#if 0
+#if 1
 
 #ifdef __STDC__
 static const double zero = 0.0;
