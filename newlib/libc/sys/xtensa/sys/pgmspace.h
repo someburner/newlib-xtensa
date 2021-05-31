@@ -112,7 +112,7 @@ static inline uint16_t pgm_read_word_inlined(const void* addr) {
 /* The ASM block doesn't care the type, so just pass in what C thinks is a float and return in custom fcn. */
 static inline float pgm_read_float_unaligned(const void* addr) {
   float res;
-  pgm_read_with_offset(addr, res);
+  pgm_read_dword_with_offset(addr, res);
   return res;
 }
 
