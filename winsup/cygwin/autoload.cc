@@ -332,21 +332,36 @@ union retchain
   two_addr_t ll;
 };
 
+/* This function handles the problem described here:
 
-/* This function is a workaround for the problem reported here:
+  http://www.microsoft.com/technet/security/advisory/2269637.mspx
+  https://msdn.microsoft.com/library/ff919712
+
+  It also contains a workaround for the problem reported here:
   http://cygwin.com/ml/cygwin/2011-02/msg00552.html
   and discussed here:
   http://cygwin.com/ml/cygwin-developers/2011-02/threads.html#00007
 
   To wit: winmm.dll calls FreeLibrary in its DllMain and that can result
-  in LoadLibraryExW returning an ERROR_INVALID_ADDRESS.  */
+  in LoadLibraryExW returning an ERROR_INVALID_ADDRESS. */
 static __inline bool
-dll_load (HANDLE& handle, WCHAR *name)
+dll_load (HANDLE& handle, PWCHAR name)
 {
-  HANDLE h = LoadLibraryW (name);
+  HANDLE h = NULL;
+  WCHAR dll_path[MAX_PATH];
+
+  /* If that failed, try loading with full path, which sometimes
+     fails for no good reason. */
+  wcpcpy (wcpcpy (dll_path, windows_system_directory), name);
+  h = LoadLibraryW (dll_path);
+  /* If that failed according to the second problem outlined in the
+     comment preceeding this function. */
   if (!h && handle && wincap.use_dont_resolve_hack ()
       && GetLastError () == ERROR_INVALID_ADDRESS)
-    h = LoadLibraryExW (name, NULL, DONT_RESOLVE_DLL_REFERENCES);
+    h = LoadLibraryExW (dll_path, NULL, DONT_RESOLVE_DLL_REFERENCES);
+  /* Last resort: Try loading just by name. */
+  if (!h)
+    h = LoadLibraryW (name);
   if (!h)
     return false;
   handle = h;
@@ -465,7 +480,6 @@ std_dll_init ()
 }
 
 /* Initialization function for winsock stuff. */
-WSADATA NO_COPY wsadata;
 
 #ifdef __x86_64__
 /* See above comment preceeding std_dll_init. */
@@ -478,6 +492,10 @@ __attribute__ ((used, noinline)) static two_addr_t
 wsock_init ()
 #endif
 {
+  /* CV 2016-03-09: Moved wsadata into wsock_init to workaround a problem
+     with the NO_COPY definition of wsadata and here starting with gcc-5.3.0.
+     See the git log for a description. */
+  static WSADATA NO_COPY wsadata;
   static LONG NO_COPY here = -1L;
 #ifndef __x86_64__
   struct func_info *func = (struct func_info *) __builtin_return_address (0);
@@ -499,7 +517,7 @@ wsock_init ()
 		   GetProcAddress ((HMODULE) (dll->handle), "WSAStartup");
       if (wsastartup)
 	{
-	  int res = wsastartup ((2<<8) | 2, &wsadata);
+	  int res = wsastartup (MAKEWORD (2, 2), &wsadata);
 
 	  debug_printf ("res %d", res);
 	  debug_printf ("wVersion %d", wsadata.wVersion);
@@ -565,7 +583,7 @@ LoadDLLfunc (AuthzInitializeContextFromToken, 32, authz)
 LoadDLLfunc (AuthzInitializeResourceManager, 24, authz)
 
 LoadDLLfunc (DnsQuery_A, 24, dnsapi)
-LoadDLLfunc (DnsRecordListFree, 8, dnsapi)
+LoadDLLfunc (DnsFree, 8, dnsapi)
 
 LoadDLLfunc (GetAdaptersAddresses, 20, iphlpapi)
 LoadDLLfunc (GetIfEntry, 4, iphlpapi)

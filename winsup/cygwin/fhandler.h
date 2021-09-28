@@ -56,6 +56,7 @@ typedef struct __DIR DIR;
 struct dirent;
 struct iovec;
 struct acl;
+struct __acl_t;
 
 enum dirent_states
 {
@@ -182,8 +183,9 @@ class fhandler_base
   size_t rabuflen;
 
   /* Used for advisory file locking.  See flock.cc.  */
-  long long unique_id;
+  int64_t unique_id;
   void del_my_locks (del_lock_called_from);
+  void set_ino (ino_t i) { ino = i; }
 
   HANDLE read_state;
 
@@ -303,8 +305,10 @@ class fhandler_base
   const char *get_name () const { return pc.get_posix (); }
   const char *get_win32_name () { return pc.get_win32 (); }
   virtual dev_t get_dev () { return get_device (); }
+  /* Use get_plain_ino if the caller needs to avoid hashing if ino is 0. */
+  ino_t get_plain_ino () { return ino; }
   ino_t get_ino () { return ino ?: ino = hash_path_name (0, pc.get_nt_native_path ()); }
-  long long get_unique_id () const { return unique_id; }
+  int64_t get_unique_id () const { return unique_id; }
   /* Returns name used for /proc/<pid>/fd in buf. */
   virtual char *get_proc_fd_name (char *buf);
 
@@ -319,6 +323,7 @@ class fhandler_base
   int open_null (int flags);
   virtual int open (int, mode_t);
   virtual void open_setup (int flags);
+  void set_unique_id (int64_t u) { unique_id = u; }
   void set_unique_id () { NtAllocateLocallyUniqueId ((PLUID) &unique_id); }
 
   int close_with_arch ();
@@ -351,6 +356,8 @@ public:
   virtual int __reg1 fchmod (mode_t mode);
   virtual int __reg2 fchown (uid_t uid, gid_t gid);
   virtual int __reg3 facl (int, int, struct acl *);
+  virtual struct __acl_t * __reg2 acl_get (uint32_t);
+  virtual int __reg3 acl_set (struct __acl_t *, uint32_t);
   virtual ssize_t __reg3 fgetxattr (const char *, void *, size_t);
   virtual int __reg3 fsetxattr (const char *, const void *, size_t, int);
   virtual int __reg3 fadvise (off_t, off_t, int);
@@ -731,13 +738,14 @@ public:
   int open (int flags, mode_t mode = 0);
   int dup (fhandler_base *child, int);
   int ioctl (unsigned int cmd, void *);
+  int __reg2 fstat (struct stat *buf);
   int __reg2 fstatvfs (struct statvfs *buf);
   int __reg3 fadvise (off_t, off_t, int);
   int __reg3 ftruncate (off_t, bool);
-  int init (HANDLE, DWORD, mode_t);
+  int init (HANDLE, DWORD, mode_t, int64_t);
   static int create (fhandler_pipe *[2], unsigned, int);
   static DWORD create (LPSECURITY_ATTRIBUTES, HANDLE *, HANDLE *, DWORD,
-		       const char *, DWORD);
+		       const char *, DWORD, int64_t *unique_id = NULL);
   fhandler_pipe (void *) {}
 
   void copyto (fhandler_base *x)
@@ -1006,6 +1014,8 @@ class fhandler_disk_file: public fhandler_base
   int __reg1 fchmod (mode_t mode);
   int __reg2 fchown (uid_t uid, gid_t gid);
   int __reg3 facl (int, int, struct acl *);
+  struct __acl_t * __reg2 acl_get (uint32_t);
+  int __reg3 acl_set (struct __acl_t *, uint32_t);
   ssize_t __reg3 fgetxattr (const char *, void *, size_t);
   int __reg3 fsetxattr (const char *, const void *, size_t, int);
   int __reg3 fadvise (off_t, off_t, int);
@@ -1342,6 +1352,8 @@ class dev_console
   bool ext_mouse_mode15;
   bool use_focus;
   bool raw_win32_keyboard_mode;
+  char cons_rabuf[40];  // cannot get longer than char buf[40] in char_command
+  char *cons_rapoi;
 
   inline UINT get_console_cp ();
   DWORD con_to_str (char *d, int dlen, WCHAR w);
@@ -1439,6 +1451,10 @@ private:
   int init (HANDLE, DWORD, mode_t);
   bool mouse_aware (MOUSE_EVENT_RECORD& mouse_event);
   bool focus_aware () {return shared_console_info->con.use_focus;}
+  bool get_cons_readahead_valid ()
+  {
+    return shared_console_info->con.cons_rapoi != NULL;
+  }
 
   select_record *select_read (select_stuff *);
   select_record *select_write (select_stuff *);
@@ -1453,6 +1469,7 @@ private:
   bool set_unit ();
   static bool need_invisible ();
   static void free_console ();
+  static const char *get_nonascii_key (INPUT_RECORD& input_rec, char *);
 
   fhandler_console (void *) {}
 
@@ -1714,8 +1731,6 @@ class fhandler_dev_random: public fhandler_base
   ssize_t __stdcall write (const void *ptr, size_t len);
   void __reg3 read (void *ptr, size_t& len);
   off_t lseek (off_t, int) { return 0; }
-
-  static bool crypt_gen_random (void *ptr, size_t len);
 
   fhandler_dev_random () : fhandler_base () {}
   fhandler_dev_random (void *) {}

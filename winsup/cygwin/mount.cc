@@ -431,10 +431,6 @@ fs_info::update (PUNICODE_STRING upath, HANDLE in_vol)
 	     only support this if the filename is non-null and the handle is
 	     the handle to a directory. NcFsd IR10 is supposed to be ok. */
 	  has_buggy_reopen (is_netapp () || is_nwfs ());
-	  /* Netapp and Parallels Desktop FS have problems with the
-	     FileNetworkOpenInformation info class.  Netapp doesn't
-	     implement it at all, Parallels always returns a size of 0. */
-	  has_broken_fnoi (is_netapp () || is_prlfs ());
 	}
     }
   if (!got_fs ()
@@ -903,7 +899,8 @@ mount_info::conv_to_posix_path (const char *src_path, char *posix_path,
   else
     {
       const char *lastchar = src_path + src_path_len - 1;
-      append_slash = isdirsep (*lastchar) && lastchar[-1] != ':';
+      append_slash = isdirsep (*lastchar)
+		     && ((ccp_flags & __CCP_APP_SLASH) || lastchar[-1] != ':');
     }
 
   debug_printf ("conv_to_posix_path (%s, 0x%x, %s)", src_path, ccp_flags,
@@ -962,7 +959,7 @@ mount_info::conv_to_posix_path (const char *src_path, char *posix_path,
       if ((mi.posix_pathlen + (pathbuflen - mi.native_pathlen) + addslash) >= NT_MAX_PATH)
 	return ENAMETOOLONG;
       strcpy (posix_path, mi.posix_path);
-      if (addslash)
+      if (addslash || (!nextchar && append_slash))
 	strcat (posix_path, "/");
       if (nextchar)
 	slashify (p,
@@ -1965,7 +1962,7 @@ dos_drive_mappings::dos_drive_mappings ()
   HANDLE sh = FindFirstVolumeW (vol, 64);
   if (sh == INVALID_HANDLE_VALUE)
     debug_printf ("FindFirstVolumeW, %E");
-  else
+  else {
     do
       {
 	/* Skip drives which are not mounted. */
@@ -2026,6 +2023,7 @@ dos_drive_mappings::dos_drive_mappings ()
       }
     while (FindNextVolumeW (sh, vol, 64));
     FindVolumeClose (sh);
+  }
 }
 
 wchar_t *

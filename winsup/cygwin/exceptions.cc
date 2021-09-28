@@ -46,8 +46,8 @@ details. */
 #define CALL_HANDLER_RETRY_INNER 10
 
 PWCHAR debugger_command;
-extern u_char _sigbe;
-extern u_char _sigdelayed_end;
+extern uint8_t _sigbe;
+extern uint8_t _sigdelayed_end;
 
 static BOOL WINAPI ctrl_c_handler (DWORD);
 
@@ -637,7 +637,7 @@ EXCEPTION_DISPOSITION
 exception::handle (EXCEPTION_RECORD *e, exception_list *frame, CONTEXT *in,
 		   PDISPATCHER_CONTEXT dispatch)
 {
-  static bool NO_COPY debugging;
+  static int NO_COPY debugging = 0;
   _cygtls& me = _my_tls;
 
 #ifndef __x86_64__
@@ -808,7 +808,7 @@ exception::handle (EXCEPTION_RECORD *e, exception_list *frame, CONTEXT *in,
     rtl_unwind (frame, e);
   else
     {
-      debugging = true;
+      debugging = 1;
       return ExceptionContinueExecution;
     }
 

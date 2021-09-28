@@ -11,6 +11,12 @@ details. */
 
 #ifndef _MISCFUNCS_H
 #define _MISCFUNCS_H
+
+#define likely(X) __builtin_expect (!!(X), 1)
+#define unlikely(X) __builtin_expect (!!(X), 0)
+
+extern "C" int getentropy (void *ptr, size_t len);
+
 int __reg1 winprio_to_nice (DWORD);
 DWORD __reg1 nice_to_winprio (int &);
 

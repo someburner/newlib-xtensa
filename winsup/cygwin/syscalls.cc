@@ -3838,7 +3838,7 @@ getpriority (int which, id_t who)
 	  case PRIO_USER:
 	    if ((uid_t) who == p->uid && p->nice < nice)
 	      nice = p->nice;
-	      break;
+	    break;
 	  }
     }
 out:
@@ -3955,7 +3955,7 @@ endutent ()
     }
 }
 
-extern "C" void
+extern "C" int
 utmpname (const char *file)
 {
   __try
@@ -3964,13 +3964,17 @@ utmpname (const char *file)
 	{
 	  endutent ();
 	  utmp_file = strdup (file);
-	  debug_printf ("New UTMP file: %s", utmp_file);
-	  return;
+	  if (utmp_file)
+	    {
+	      debug_printf ("New UTMP file: %s", utmp_file);
+	      return 0;
+	    }
 	}
     }
-  __except (NO_ERROR) {}
+  __except (EFAULT) {}
   __endtry
-  debug_printf ("Invalid file");
+  debug_printf ("Setting UTMP file failed");
+  return -1;
 }
 
 EXPORT_ALIAS (utmpname, utmpxname)

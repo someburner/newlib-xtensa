@@ -42,6 +42,9 @@ What changed:
 - Fix (numeric and monetary) decimal point and thousands separator in
   fa_IR and ps_AF locales to be aligned with Linux.
 
+- utmpname/utmpxname are now defined as int functions as on Linux.
+  Addresses: https://cygwin.com/ml/cygwin/2015-12/msg00320.html
+
 
 Bug Fixes
 ---------
@@ -70,3 +73,14 @@ Bug Fixes
 - Fix a potential crash reading invalid passwd and group entries from
   /etc/passwd and /etc/group.
   Addresses: https://cygwin.com/ml/cygwin/2015-12/msg00170.html
+
+- Cygpath(1) now tries to correct the case of system directories when
+  returned as POSIX paths.
+  Addresses: https://cygwin.com/ml/cygwin/2016-01/msg00002.html
+
+- *Always* zero out descriptor arrays when returning from select due to
+  timeout, per POSIX.
+  Addresses: https://cygwin.com/ml/cygwin/2015-12/msg00332.html
+
+- Return unique inode numbers when calling stat/fstat on pipes and IP sockets.
+  Addresses: https://cygwin.com/ml/cygwin/2015-12/msg00310.html

@@ -13,7 +13,7 @@ details. */
 #include <winioctl.h>
 #include <lm.h>
 #include <stdlib.h>
-#include <sys/acl.h>
+#include <cygwin/acl.h>
 #include <sys/statvfs.h>
 #include "cygerrno.h"
 #include "security.h"
@@ -742,7 +742,7 @@ fhandler_disk_file::fchmod (mode_t mode)
       query_open (query_write_dac);
       if (!(oret = open (O_BINARY, 0)))
 	{
-	  /* Need WRITE_DAC|WRITE_OWNER to write ACLs. */
+	  /* Need WRITE_DAC to write ACLs. */
 	  if (pc.has_acls ())
 	    return -1;
 	  /* Otherwise FILE_WRITE_ATTRIBUTES is sufficient. */
@@ -787,35 +787,35 @@ fhandler_disk_file::fchmod (mode_t mode)
       gid_t gid;
       tmp_pathbuf tp;
       aclent_t *aclp;
+      bool standard_acl = false;
       int nentries, idx;
 
       if (!get_file_sd (get_handle (), pc, sd, false))
 	{
 	  aclp = (aclent_t *) tp.c_get ();
 	  if ((nentries = get_posix_access (sd, NULL, &uid, &gid,
-					    aclp, MAX_ACL_ENTRIES)) >= 0)
+					    aclp, MAX_ACL_ENTRIES,
+					    &standard_acl)) >= 0)
 	    {
 	      /* Overwrite ACL permissions as required by POSIX 1003.1e
 		 draft 17. */
 	      aclp[0].a_perm = (mode >> 6) & S_IRWXO;
-#if 0
-	      /* Deliberate deviation from POSIX 1003.1e here.  We're not
-		 writing CLASS_OBJ *or* GROUP_OBJ, but both.  Otherwise we're
-		 going to be in constant trouble with user expectations. */
-	      if ((idx = searchace (aclp, nentries, GROUP_OBJ)) >= 0)
-		aclp[idx].a_perm = (mode >> 3) & S_IRWXO;
-	      if (nentries > MIN_ACL_ENTRIES
-		  && (idx = searchace (aclp, nentries, CLASS_OBJ)) >= 0)
-		aclp[idx].a_perm = (mode >> 3) & S_IRWXO;
-#else
+
 	      /* POSIXly correct: If CLASS_OBJ is present, chmod only modifies
-		 CLASS_OBJ, not GROUP_OBJ. */
+		 CLASS_OBJ, not GROUP_OBJ.
+
+		 Deliberate deviation from POSIX 1003.1e:  If the ACL is a
+		 "standard" ACL, that is, it only contains POSIX permissions
+		 as well as entries for the Administrators group and SYSTEM,
+		 then it's kind of a POSIX-only ACL in a twisted, Windowsy
+		 way.  If so, we change GROUP_OBJ and CLASS_OBJ perms. */
+	      if (standard_acl
+		  && (idx = searchace (aclp, nentries, GROUP_OBJ)) >= 0)
+		aclp[idx].a_perm = (mode >> 3) & S_IRWXO;
 	      if (nentries > MIN_ACL_ENTRIES
 		  && (idx = searchace (aclp, nentries, CLASS_OBJ)) >= 0)
 		aclp[idx].a_perm = (mode >> 3) & S_IRWXO;
-	      else if ((idx = searchace (aclp, nentries, GROUP_OBJ)) >= 0)
-		aclp[idx].a_perm = (mode >> 3) & S_IRWXO;
-#endif
+
 	      if ((idx = searchace (aclp, nentries, OTHER_OBJ)) >= 0)
 		aclp[idx].a_perm = mode & S_IRWXO;
 	      if (pc.isdir ())
@@ -1021,7 +1021,7 @@ cant_access_acl:
       if ((cmd == SETACL && !get_handle ())
 	  || (cmd != SETACL && !get_stat_handle ()))
 	{
-	  query_open (cmd == SETACL ? query_write_control : query_read_control);
+	  query_open (cmd == SETACL ? query_write_dac : query_read_control);
 	  if (!(oret = open (O_BINARY, 0)))
 	    {
 	      if (cmd == GETACL || cmd == GETACLCNT)
@@ -1055,11 +1055,12 @@ cant_access_acl:
 	  case GETACL:
 	    if (!aclbufp)
 	      set_errno(EFAULT);
-	    else
+	    else {
 	      res = getacl (get_stat_handle (), pc, nentries, aclbufp);
 	      /* For this ENOSYS case, see security.cc:get_file_attribute(). */
 	      if (res == -1 && get_errno () == ENOSYS)
 		goto cant_access_acl;
+            }
 	    break;
 	  case GETACLCNT:
 	    res = getacl (get_stat_handle (), pc, 0, NULL);

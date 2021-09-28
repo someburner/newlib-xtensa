@@ -41,7 +41,7 @@
 #include "wininfo.h"
 #include <unistd.h>
 #include <sys/param.h>
-#include <sys/acl.h>
+#include <cygwin/acl.h>
 #include "cygtls.h"
 #include <sys/un.h>
 #include "ntdll.h"
@@ -250,7 +250,7 @@ fhandler_socket::~fhandler_socket ()
 char *
 fhandler_socket::get_proc_fd_name (char *buf)
 {
-  __small_sprintf (buf, "socket:[%lu]", get_socket ());
+  __small_sprintf (buf, "socket:[%lu]", get_plain_ino ());
   return buf;
 }
 
@@ -488,8 +488,7 @@ fhandler_socket::af_local_copy (fhandler_socket *sock)
 void
 fhandler_socket::af_local_set_secret (char *buf)
 {
-  if (!fhandler_dev_random::crypt_gen_random (connect_secret,
-					      sizeof (connect_secret)))
+  if (getentropy (connect_secret, sizeof (connect_secret)))
     bzero ((char*) connect_secret, sizeof (connect_secret));
   __small_sprintf (buf, "%08x-%08x-%08x-%08x",
 		   connect_secret [0], connect_secret [1],
@@ -594,6 +593,7 @@ fhandler_socket::init_events ()
 	InterlockedIncrement (&socket_serial_number);
       if (!new_serial_number)	/* 0 is reserved for global mutex */
 	InterlockedIncrement (&socket_serial_number);
+      set_ino (new_serial_number);
       RtlInitUnicodeString (&uname, sock_shared_name (name, new_serial_number));
       InitializeObjectAttributes (&attr, &uname, OBJ_INHERIT | OBJ_OPENIF,
 				  get_session_parent_dir (),
@@ -937,8 +937,10 @@ fhandler_socket::fstat (struct stat *buf)
       res = fhandler_base::fstat (buf);
       if (!res)
 	{
-	  buf->st_dev = 0;
-	  buf->st_ino = (ino_t) ((uintptr_t) get_handle ());
+	  buf->st_dev = FHDEV (DEV_TCP_MAJOR, 0);
+	  if (!(buf->st_ino = get_plain_ino ()))
+	    sscanf (get_name (), "/proc/%*d/fd/socket:[%lld]",
+				 (long long *) &buf->st_ino);
 	  buf->st_mode = S_IFSOCK | S_IRWXU | S_IRWXG | S_IRWXO;
 	  buf->st_size = 0;
 	}
@@ -2246,7 +2248,7 @@ fhandler_socket::ioctl (unsigned int cmd, void *p)
        use a type of the expected size.  Hopefully. */
     case FIOASYNC:
 #ifdef __x86_64__
-    case _IOW('f', 125, unsigned long):
+    case _IOW('f', 125, u_long):
 #endif
       res = WSAAsyncSelect (get_socket (), winmsg, WM_ASYNCIO,
 	      *(int *) p ? ASYNC_MASK : 0);
@@ -2259,7 +2261,7 @@ fhandler_socket::ioctl (unsigned int cmd, void *p)
       break;
     case FIONREAD:
 #ifdef __x86_64__
-    case _IOR('f', 127, unsigned long):
+    case _IOR('f', 127, u_long):
 #endif
       res = ioctlsocket (get_socket (), FIONREAD, (u_long *) p);
       if (res == SOCKET_ERROR)

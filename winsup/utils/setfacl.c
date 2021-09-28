@@ -20,8 +20,7 @@ details. */
 #include <getopt.h>
 #include <pwd.h>
 #include <grp.h>
-#include <sys/types.h>
-#include <sys/acl.h>
+#include <cygwin/acl.h>
 #include <cygwin/version.h>
 
 #ifndef BOOL
@@ -255,7 +254,7 @@ delace (aclent_t *tgt, int tcnt, int t)
 int
 delacl (aclent_t *tgt, int tcnt, aclent_t *src, int scnt)
 {
-  int t, s, i;
+  int t, s;
 
   for (s = 0; s < scnt; ++s)
     {

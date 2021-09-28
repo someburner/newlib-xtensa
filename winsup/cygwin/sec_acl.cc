@@ -1,4 +1,4 @@
-/* sec_acl.cc: Sun compatible ACL functions.
+/* sec_acl.cc: Solaris compatible ACL functions.
 
    Copyright 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
    2011, 2012, 2014, 2015 Red Hat, Inc.
@@ -13,7 +13,6 @@ details. */
 
 #include "winsup.h"
 #include <stdlib.h>
-#include <sys/acl.h>
 #include <ctype.h>
 #include "cygerrno.h"
 #include "security.h"
@@ -23,11 +22,12 @@ details. */
 #include "cygheap.h"
 #include "ntdll.h"
 #include "tls_pbuf.h"
+#include "sec_posixacl.h"
 
 /* How does a correctly constructed new-style Windows ACL claiming to be a
    POSIX ACL look like?
 
-   - NULL ACE (special bits, CLASS_OBJ).
+   - NULL deny ACE (special bits, CLASS_OBJ).
 
    - USER_OBJ deny.  If the user has less permissions than the sum of CLASS_OBJ
      (or GROUP_OBJ if CLASS_OBJ doesn't exist) and OTHER_OBJ, deny the excess
@@ -66,12 +66,12 @@ details. */
 
    Rinse and repeat for default ACEs with INHERIT flags set.
 
-   - Default NULL ACE (S_ISGID, CLASS_OBJ). */
+   - Default NULL deny ACE (S_ISGID, CLASS_OBJ). */
 
 						/* POSIX <-> Win32 */
 
-/* Historically, these bits are stored in a NULL SID ACE.  To distinguish the
-   new ACL style from the old one, we're using an access denied ACE, plus
+/* Historically, these bits are stored in a NULL allow SID ACE.  To distinguish
+   the new ACL style from the old one, we're using an access denied ACE, plus
    setting an as yet unused bit in the access mask.  The new ACEs can exist
    twice in an ACL, the "normal one" containing CLASS_OBJ and special bits
    and the one with INHERIT bit set to pass the DEF_CLASS_OBJ bits and the
@@ -96,18 +96,6 @@ details. */
 				 | CYG_ACE_MASK_VALID)
 #define CYG_ACE_NEW_STYLE	READ_CONTROL	/* New style if set. */
 
-int
-searchace (aclent_t *aclp, int nentries, int type, uid_t id)
-{
-  int i;
-
-  for (i = 0; i < nentries; ++i)
-    if ((aclp[i].a_type == type && (id == ILLEGAL_UID || aclp[i].a_id == id))
-	|| !aclp[i].a_type)
-      return i;
-  return -1;
-}
-
 /* Define own bit masks rather than using the GENERIC masks.  The latter
    also contain standard rights, which we don't need here. */
 #define FILE_ALLOW_READ		(FILE_READ_DATA | FILE_READ_ATTRIBUTES | \
@@ -124,6 +112,19 @@ searchace (aclent_t *aclp, int nentries, int type, uid_t id)
 #define STD_RIGHTS_OTHER	(STANDARD_RIGHTS_READ | SYNCHRONIZE)
 #define STD_RIGHTS_OWNER	(STANDARD_RIGHTS_ALL | SYNCHRONIZE)
 
+int
+searchace (aclent_t *aclp, int nentries, int type, uid_t id)
+{
+  int i;
+
+  for (i = 0; i < nentries; ++i)
+    if ((aclp[i].a_type == type
+	 && (id == ACL_UNDEFINED_ID || aclp[i].a_id == id))
+	|| !aclp[i].a_type)
+      return i;
+  return -1;
+}
+
 /* From the attributes and the POSIX ACL list, compute a new-style Cygwin
    security descriptor.  The function returns a pointer to the
    SECURITY_DESCRIPTOR in sd_ret, or NULL if the function fails.
@@ -137,13 +138,15 @@ set_posix_access (mode_t attr, uid_t uid, gid_t gid,
 {
   SECURITY_DESCRIPTOR sd;
   cyg_ldap cldap;
-  PSID owner, group;
+  PSID owner = NULL, group = NULL;
+  cygsid smb_owner, smb_group;
   NTSTATUS status;
   tmp_pathbuf tp;
   cygpsid *aclsid;
   PACL acl;
   size_t acl_len = sizeof (ACL);
-  mode_t class_obj = 0, other_obj, group_obj, deny;
+  mode_t user_obj, group_obj, other_obj, deny;
+  mode_t class_obj = 0;
   DWORD access;
   int idx, start_idx, tmp_idx;
   bool owner_eq_group = false;
@@ -156,9 +159,27 @@ set_posix_access (mode_t attr, uid_t uid, gid_t gid,
      modified by inheritable ACEs. */
   RtlSetControlSecurityDescriptor (&sd, SE_DACL_PROTECTED, SE_DACL_PROTECTED);
 
-  /* Fetch owner and group and set in security descriptor. */
-  owner = sidfromuid (uid, &cldap);
-  group = sidfromgid (gid, &cldap);
+  /* Fetch owner and group and set in security descriptor.
+
+     For Samba we check if there's an RFC2307 mapping in place, otherwise
+     we're trying to create an ACL with the wrong Windows SIDs rather than
+     the correct Unix SIDs.  Same happens below for mapping other USER and
+     GROUP SIDs. */
+  if (is_samba)
+    {
+      uint32_t smb_uid, smb_gid;
+
+      smb_uid = cygheap->ugid_cache.reverse_get_uid (uid);
+      if (smb_uid != ILLEGAL_UID)
+	owner = smb_owner.create (22, 2, 1, smb_uid);
+      smb_gid = cygheap->ugid_cache.reverse_get_gid (gid);
+      if (smb_gid != ILLEGAL_GID)
+	group = smb_group.create (22, 2, 2, smb_gid);
+    }
+  if (!owner)
+    owner = sidfromuid (uid, &cldap);
+  if (!group)
+    group = sidfromgid (gid, &cldap);
   if (!owner || !group)
     {
       set_errno (EINVAL);
@@ -186,25 +207,25 @@ set_posix_access (mode_t attr, uid_t uid, gid_t gid,
     {
       aclbufp = (aclent_t *) tp.c_get ();
       aclbufp[0].a_type = USER_OBJ;
-      aclbufp[0].a_id = ILLEGAL_UID;
+      aclbufp[0].a_id = ACL_UNDEFINED_ID;
       aclbufp[0].a_perm = (attr >> 6) & S_IRWXO;
       aclbufp[1].a_type = GROUP_OBJ;
-      aclbufp[1].a_id = ILLEGAL_GID;
+      aclbufp[1].a_id = ACL_UNDEFINED_ID;
       aclbufp[1].a_perm = (attr >> 3) & S_IRWXO;
       aclbufp[2].a_type = OTHER_OBJ;
-      aclbufp[2].a_id = ILLEGAL_GID;
+      aclbufp[2].a_id = ACL_UNDEFINED_ID;
       aclbufp[2].a_perm = attr & S_IRWXO;
       nentries = MIN_ACL_ENTRIES;
       if (S_ISDIR (attr))
 	{
 	  aclbufp[3].a_type = DEF_USER_OBJ;
-	  aclbufp[3].a_id = ILLEGAL_UID;
+	  aclbufp[3].a_id = ACL_UNDEFINED_ID;
 	  aclbufp[3].a_perm = (attr >> 6) & S_IRWXO;
 	  aclbufp[4].a_type = GROUP_OBJ;
-	  aclbufp[4].a_id = ILLEGAL_GID;
+	  aclbufp[4].a_id = ACL_UNDEFINED_ID;
 	  aclbufp[4].a_perm = (attr >> 3) & S_IRWXO;
 	  aclbufp[5].a_type = OTHER_OBJ;
-	  aclbufp[5].a_id = ILLEGAL_GID;
+	  aclbufp[5].a_id = ACL_UNDEFINED_ID;
 	  aclbufp[5].a_perm = attr & S_IRWXO;
 	  nentries += MIN_ACL_ENTRIES;
 	}
@@ -223,7 +244,21 @@ set_posix_access (mode_t attr, uid_t uid, gid_t gid,
 	break;
       case USER:
       case DEF_USER:
-	aclsid[idx] = sidfromuid (aclbufp[idx].a_id, &cldap);
+	aclsid[idx] = NO_SID;
+	if (is_samba)
+	  {
+	    uint32_t smb_uid;
+	    cygsid *smb_sid;
+
+	    smb_uid = cygheap->ugid_cache.reverse_get_uid (aclbufp[idx].a_id);
+	    if (smb_uid != ILLEGAL_UID)
+	      {
+		smb_sid = (cygsid *) alloca (sizeof (cygsid));
+		aclsid[idx] = smb_sid->create (22, 2, 1, smb_uid);
+	      }
+	  }
+	if (!aclsid[idx])
+	  aclsid[idx] = sidfromuid (aclbufp[idx].a_id, &cldap);
 	break;
       case GROUP_OBJ:
 	aclsid[idx] = group;
@@ -234,7 +269,21 @@ set_posix_access (mode_t attr, uid_t uid, gid_t gid,
 	break;
       case GROUP:
       case DEF_GROUP:
-	aclsid[idx] = sidfromgid (aclbufp[idx].a_id, &cldap);
+	aclsid[idx] = NO_SID;
+	if (is_samba)
+	  {
+	    uint32_t smb_gid;
+	    cygsid *smb_sid;
+
+	    smb_gid = cygheap->ugid_cache.reverse_get_gid (aclbufp[idx].a_id);
+	    if (smb_gid != ILLEGAL_GID)
+	      {
+		smb_sid = (cygsid *) alloca (sizeof (cygsid));
+		aclsid[idx] = smb_sid->create (22, 2, 2, smb_gid);
+	      }
+	  }
+	if (!aclsid[idx])
+	  aclsid[idx] = sidfromgid (aclbufp[idx].a_id, &cldap);
 	break;
       case CLASS_OBJ:
       case DEF_CLASS_OBJ:
@@ -271,6 +320,9 @@ set_posix_access (mode_t attr, uid_t uid, gid_t gid,
 	  break;
 	}
 
+      /* To check if the NULL SID deny ACE is required we need user_obj.  */
+      tmp_idx = searchace (aclbufp, nentries, def | USER_OBJ);
+      user_obj = aclbufp[tmp_idx].a_perm;
       /* To compute deny access masks, we need group_obj, other_obj and... */
       tmp_idx = searchace (aclbufp, nentries, def | GROUP_OBJ);
       /* No default entries present? */
@@ -280,7 +332,7 @@ set_posix_access (mode_t attr, uid_t uid, gid_t gid,
       tmp_idx = searchace (aclbufp, nentries, def | OTHER_OBJ);
       other_obj = aclbufp[tmp_idx].a_perm;
 
-      /* ... class_obj.  Create Cygwin ACE.  Only the S_ISGID attribute gets
+      /* ... class_obj.  Create NULL deny ACE.  Only the S_ISGID attribute gets
 	 inherited. */
       access = CYG_ACE_ISBITS_TO_WIN (def ? attr & S_ISGID : attr)
 	       | CYG_ACE_NEW_STYLE;
@@ -299,9 +351,18 @@ set_posix_access (mode_t attr, uid_t uid, gid_t gid,
       /* Note that Windows filters the ACE Mask value so it only reflects
 	 the bit values supported by the object type.  The result is that
 	 we can't set a CLASS_OBJ value for ptys.  The get_posix_access
-	 function has to workaround that. */
-      if (!add_access_denied_ace (acl, access, well_known_null_sid, acl_len,
-				  inherit))
+	 function has to workaround that.
+
+	 We also don't write the NULL SID ACE in case we have a simple POSIX
+	 permission ACL with the user perms >= group perms >= other perms and
+	 no special bits set.  In all other cases we either need the NULL SID
+	 ACE or we write it to avoid calls to AuthZ from get_posix_access. */
+      if (!S_ISCHR (attr)
+	  && access != CYG_ACE_NEW_STYLE
+	  && ((user_obj | group_obj | other_obj) != user_obj
+	      || (group_obj | other_obj) != group_obj)
+	  && !add_access_denied_ace (acl, access, well_known_null_sid, acl_len,
+				     inherit))
 	return NULL;
 
       /* Do we potentially chmod a file with owner SID == group SID?  If so,
@@ -429,7 +490,7 @@ set_posix_access (mode_t attr, uid_t uid, gid_t gid,
 	      }
 	}
       /* For ptys if the admins group isn't in the ACL, add an ACE to make
-	 sure the group has WRITE_DAC and WRITE_OWNER perms. */
+	 sure the admins group has WRITE_DAC and WRITE_OWNER perms. */
       if (S_ISCHR (attr) && !dev_has_admins
 	  && !add_access_allowed_ace (acl,
 				      STD_RIGHTS_OWNER | FILE_ALLOW_READ
@@ -561,11 +622,17 @@ getace (aclent_t &acl, int type, int id, DWORD win_ace_mask,
 
 /* From the SECURITY_DESCRIPTOR given in psd, compute user, owner, posix
    attributes, as well as the POSIX acl.  The function returns the number
-   of entries returned in aclbufp, or -1 in case of error. */
+   of entries returned in aclbufp, or -1 in case of error.
+
+   When called from chmod, it also returns the fact if the ACL is a "standard"
+   ACL.  A "standard" ACL is an ACL which only consists of ACEs for owner,
+   group, other, as well as (this is Windows) the Administrators group and
+   SYSTEM.  See fhandler_disk_file::fchmod for how this is used to fake
+   stock POSIX perms even if Administrators and SYSTEM is in the ACE. */
 int
 get_posix_access (PSECURITY_DESCRIPTOR psd,
 		  mode_t *attr_ret, uid_t *uid_ret, gid_t *gid_ret,
-		  aclent_t *aclbufp, int nentries)
+		  aclent_t *aclbufp, int nentries, bool *std_acl)
 {
   tmp_pathbuf tp;
   NTSTATUS status;
@@ -612,19 +679,19 @@ get_posix_access (PSECURITY_DESCRIPTOR psd,
       if (attr_ret)
         *attr_ret &= S_IFMT;
       if (uid_ret)
-        *uid_ret = ILLEGAL_UID;
+        *uid_ret = ACL_UNDEFINED_ID;
       if (gid_ret)
-        *gid_ret = ILLEGAL_GID;
+        *gid_ret = ACL_UNDEFINED_ID;
       if (aclbufp)
 	{
 	  aclbufp[0].a_type = USER_OBJ;
-	  aclbufp[0].a_id = ILLEGAL_UID;
+	  aclbufp[0].a_id = ACL_UNDEFINED_ID;
 	  aclbufp[0].a_perm = 0;
 	  aclbufp[1].a_type = GROUP_OBJ;
-	  aclbufp[1].a_id = ILLEGAL_GID;
+	  aclbufp[1].a_id = ACL_UNDEFINED_ID;
 	  aclbufp[1].a_perm = 0;
 	  aclbufp[2].a_type = OTHER_OBJ;
-	  aclbufp[2].a_id = ILLEGAL_GID;
+	  aclbufp[2].a_id = ACL_UNDEFINED_ID;
 	  aclbufp[2].a_perm = 0;
 	  return MIN_ACL_ENTRIES;
 	}
@@ -668,7 +735,7 @@ get_posix_access (PSECURITY_DESCRIPTOR psd,
   lacl[1].a_type = GROUP_OBJ;
   lacl[1].a_id = gid;
   lacl[2].a_type = OTHER_OBJ;
-  lacl[2].a_id = ILLEGAL_GID;
+  lacl[2].a_id = ACL_UNDEFINED_ID;
   /* Create array to collect SIDs of all entries in lacl. */
   aclsid = (cygpsid *) tp.w_get ();
   aclsid[0] = owner_sid;
@@ -710,7 +777,7 @@ get_posix_access (PSECURITY_DESCRIPTOR psd,
 	    {
 	      /* New-style ACL.  Note the fact that a mask value is present
 		 since that changes how getace fetches the information.  That's
-		 fine, because the Cygwin SID ACE is supposed to precede all
+		 fine, because the NULL deny ACE is supposed to precede all
 		 USER, GROUP and GROUP_OBJ entries.  Any ACL not created that
 		 way has been rearranged by the Windows functionality to create
 		 the brain-dead "canonical" ACL order and is broken anyway. */
@@ -724,7 +791,7 @@ get_posix_access (PSECURITY_DESCRIPTOR psd,
 			  >= 0)
 			{
 			  lacl[pos].a_type = CLASS_OBJ;
-			  lacl[pos].a_id = ILLEGAL_GID;
+			  lacl[pos].a_id = ACL_UNDEFINED_ID;
 			  lacl[pos].a_perm = CYG_ACE_MASK_TO_POSIX (ace->Mask);
 			  aclsid[pos] = well_known_null_sid;
 			}
@@ -737,7 +804,7 @@ get_posix_access (PSECURITY_DESCRIPTOR psd,
 					    DEF_CLASS_OBJ)) >= 0)
 			{
 			  lacl[pos].a_type = DEF_CLASS_OBJ;
-			  lacl[pos].a_id = ILLEGAL_GID;
+			  lacl[pos].a_id = ACL_UNDEFINED_ID;
 			  lacl[pos].a_perm = CYG_ACE_MASK_TO_POSIX (ace->Mask);
 			  aclsid[pos] = well_known_null_sid;
 			}
@@ -761,7 +828,7 @@ get_posix_access (PSECURITY_DESCRIPTOR psd,
       else if (ace_sid == well_known_world_sid)
 	{
 	  type = OTHER_OBJ;
-	  id = ILLEGAL_GID;
+	  id = ACL_UNDEFINED_ID;
 	  if (ace->Header.AceType == ACCESS_ALLOWED_ACE_TYPE
 	      && !(ace->Header.AceFlags & INHERIT_ONLY))
 	    saw_other_obj = true;
@@ -770,14 +837,14 @@ get_posix_access (PSECURITY_DESCRIPTOR psd,
 	{
 	  type = DEF_USER_OBJ;
 	  types_def |= type;
-	  id = ILLEGAL_GID;
+	  id = ACL_UNDEFINED_ID;
 	  saw_def_user_obj = true;
 	}
       else if (ace_sid == well_known_creator_group_sid)
 	{
 	  type = DEF_GROUP_OBJ;
 	  types_def |= type;
-	  id = ILLEGAL_GID;
+	  id = ACL_UNDEFINED_ID;
 	  saw_def_group_obj = true;
 	}
       else
@@ -829,10 +896,12 @@ get_posix_access (PSECURITY_DESCRIPTOR psd,
 	  else if (type == GROUP_OBJ)
 	    {
 	      /* Same for the primary group. */
-	      if (saw_group_obj)
-		type = GROUP;
 	      if (ace->Header.AceType == ACCESS_ALLOWED_ACE_TYPE)
-		saw_group_obj = true;
+		{
+		  if (saw_group_obj)
+		    type = GROUP;
+		  saw_group_obj = true;
+		}
 	    }
 	  if ((pos = searchace (lacl, MAX_ACL_ENTRIES, type, id)) >= 0)
 	    {
@@ -850,7 +919,10 @@ get_posix_access (PSECURITY_DESCRIPTOR psd,
 			 GROUP_OBJ entry. */
 		      if (ace_sid != well_known_system_sid
 			  && ace_sid != well_known_admins_sid)
-			class_perm |= lacl[pos].a_perm;
+			{
+			  class_perm |= lacl[pos].a_perm;
+			  standard_ACEs_only = false;
+			}
 		    }
 		}
 	      /* For a newly created file, we'd like to know if we're running
@@ -859,7 +931,6 @@ get_posix_access (PSECURITY_DESCRIPTOR psd,
 		 a standard ACL, we apply umask.  That's not entirely correct,
 		 but it's probably the best we can do. */
 	      else if (type & (USER | GROUP)
-		       && just_created
 		       && standard_ACEs_only
 		       && ace_sid != well_known_system_sid
 		       && ace_sid != well_known_admins_sid)
@@ -878,10 +949,10 @@ get_posix_access (PSECURITY_DESCRIPTOR psd,
 		{
 		  if (owner_eq_group && !saw_def_group_obj && attr & S_ISGID)
 		    {
-		      /* This needs post-processing in the following GROUP_OBJ
-		         handling...  Set id to ILLEGAL_GID to play it safe. */
+		      /* Needs post-processing in the following GROUP_OBJ block.
+		         Set id to ACL_UNDEFINED_ID to play it safe. */
 		      type = GROUP_OBJ;
-		      id = ILLEGAL_GID;
+		      id = ACL_UNDEFINED_ID;
 		    }
 		  else
 		    type = USER;
@@ -934,7 +1005,7 @@ get_posix_access (PSECURITY_DESCRIPTOR psd,
       && (pos = searchace (lacl, MAX_ACL_ENTRIES, 0)) >= 0)
     {
       lacl[pos].a_type = CLASS_OBJ;
-      lacl[pos].a_id = ILLEGAL_GID;
+      lacl[pos].a_id = ACL_UNDEFINED_ID;
       class_perm |= lacl[1].a_perm;
       lacl[pos].a_perm = class_perm;
       aclsid[pos] = well_known_null_sid;
@@ -950,7 +1021,7 @@ get_posix_access (PSECURITY_DESCRIPTOR psd,
 	   && (pos = searchace (lacl, MAX_ACL_ENTRIES, CLASS_OBJ)) >= 0)
     {
       lacl[pos].a_type = CLASS_OBJ;
-      lacl[pos].a_id = ILLEGAL_GID;
+      lacl[pos].a_id = ACL_UNDEFINED_ID;
       lacl[pos].a_perm = lacl[1].a_perm; /* == group perms */
       aclsid[pos] = well_known_null_sid;
     }
@@ -994,7 +1065,7 @@ get_posix_access (PSECURITY_DESCRIPTOR psd,
       if (!(types_def & OTHER_OBJ) && pos < MAX_ACL_ENTRIES)
 	{
 	  lacl[pos].a_type = DEF_OTHER_OBJ;
-	  lacl[pos].a_id = ILLEGAL_GID;
+	  lacl[pos].a_id = ACL_UNDEFINED_ID;
 	  lacl[pos].a_perm = lacl[2].a_perm;
 	  aclsid[pos] = well_known_world_sid;
 	  pos++;
@@ -1009,7 +1080,7 @@ get_posix_access (PSECURITY_DESCRIPTOR psd,
       && (pos = searchace (lacl, MAX_ACL_ENTRIES, 0)) >= 0)
     {
       lacl[pos].a_type = DEF_CLASS_OBJ;
-      lacl[pos].a_id = ILLEGAL_GID;
+      lacl[pos].a_id = ACL_UNDEFINED_ID;
       lacl[pos].a_perm = def_class_perm;
       if (def_pgrp_pos >= 0)
 	lacl[pos].a_perm |= lacl[def_pgrp_pos].a_perm;
@@ -1066,7 +1137,7 @@ get_posix_access (PSECURITY_DESCRIPTOR psd,
 	  }
 	/* For all groups, if everyone has more permissions, add everyone
 	   perms to group perms.  Skip groups with deny ACE. */
-	else if (lacl[idx].a_id & (GROUP_OBJ | GROUP)
+	else if (lacl[idx].a_type & (GROUP_OBJ | GROUP)
 		 && !(lacl[idx].a_type & ACL_DEFAULT)
 		 && !(lacl[idx].a_perm & DENY_RWX))
 	  lacl[idx].a_perm |= lacl[2].a_perm & S_IRWXO;
@@ -1080,7 +1151,7 @@ get_posix_access (PSECURITY_DESCRIPTOR psd,
      to fetch the affecting bits from, at least as long as the array
      hasn't been sorted. */
   attr |= (lacl[0].a_perm & S_IRWXO) << 6;
-  attr |= (has_class_perm ? class_perm : (lacl[1].a_perm & S_IRWXO)) << 3;
+  attr |= ((has_class_perm ? class_perm : lacl[1].a_perm) & S_IRWXO) << 3;
   attr |= (lacl[2].a_perm & S_IRWXO);
 
 out:
@@ -1102,6 +1173,8 @@ out:
 	aclbufp[idx].a_perm &= S_IRWXO;
       aclsort32 (pos, 0, aclbufp);
     }
+  if (std_acl)
+    *std_acl = standard_ACEs_only;
   return pos;
 }
 
@@ -1163,136 +1236,197 @@ facl32 (int fd, int cmd, int nentries, aclent_t *aclbufp)
   return res;
 }
 
-extern "C" int
-aclcheck32 (aclent_t *aclbufp, int nentries, int *which)
+int
+__aclcheck (aclent_t *aclbufp, int nentries, int *which, bool posix)
 {
   bool has_user_obj = false;
   bool has_group_obj = false;
   bool has_other_obj = false;
   bool has_class_obj = false;
-  bool has_ug_objs __attribute__ ((unused)) = false;
-  bool has_def_objs __attribute__ ((unused)) = false;
-  bool has_def_user_obj __attribute__ ((unused)) = false;
+  bool has_ug_objs = false;
+  bool has_def_objs = false;
+  bool has_def_user_obj = false;
   bool has_def_group_obj = false;
   bool has_def_other_obj = false;
   bool has_def_class_obj = false;
-  bool has_def_ug_objs __attribute__ ((unused)) = false;
+  bool has_def_ug_objs = false;
   int pos2;
 
   for (int pos = 0; pos < nentries; ++pos)
-    switch (aclbufp[pos].a_type)
-      {
-      case USER_OBJ:
-	if (has_user_obj)
-	  {
-	    if (which)
-	      *which = pos;
-	    return USER_ERROR;
-	  }
-	has_user_obj = true;
-	break;
-      case GROUP_OBJ:
-	if (has_group_obj)
-	  {
-	    if (which)
-	      *which = pos;
-	    return GRP_ERROR;
-	  }
-	has_group_obj = true;
-	break;
-      case OTHER_OBJ:
-	if (has_other_obj)
-	  {
-	    if (which)
-	      *which = pos;
-	    return OTHER_ERROR;
-	  }
-	has_other_obj = true;
-	break;
-      case CLASS_OBJ:
-	if (has_class_obj)
-	  {
-	    if (which)
-	      *which = pos;
-	    return CLASS_ERROR;
-	  }
-	has_class_obj = true;
-	break;
-      case USER:
-      case GROUP:
-	if ((pos2 = searchace (aclbufp + pos + 1, nentries - pos - 1,
-			       aclbufp[pos].a_type, aclbufp[pos].a_id)) >= 0)
-	  {
-	    if (which)
-	      *which = pos2;
-	    return DUPLICATE_ERROR;
-	  }
-	has_ug_objs = true;
-	break;
-      case DEF_USER_OBJ:
-	if (has_def_user_obj)
-	  {
-	    if (which)
-	      *which = pos;
-	    return USER_ERROR;
-	  }
-	has_def_objs = has_def_user_obj = true;
-	break;
-      case DEF_GROUP_OBJ:
-	if (has_def_group_obj)
-	  {
-	    if (which)
-	      *which = pos;
-	    return GRP_ERROR;
-	  }
-	has_def_objs = has_def_group_obj = true;
-	break;
-      case DEF_OTHER_OBJ:
-	if (has_def_other_obj)
-	  {
-	    if (which)
-	      *which = pos;
-	    return OTHER_ERROR;
-	  }
-	has_def_objs = has_def_other_obj = true;
-	break;
-      case DEF_CLASS_OBJ:
-	if (has_def_class_obj)
-	  {
-	    if (which)
-	      *which = pos;
-	    return CLASS_ERROR;
-	  }
-	has_def_objs = has_def_class_obj = true;
-	break;
-      case DEF_USER:
-      case DEF_GROUP:
-	if ((pos2 = searchace (aclbufp + pos + 1, nentries - pos - 1,
-			       aclbufp[pos].a_type, aclbufp[pos].a_id)) >= 0)
-	  {
-	    if (which)
-	      *which = pos2;
-	    return DUPLICATE_ERROR;
-	  }
-	has_def_objs = has_def_ug_objs = true;
-	break;
-      default:
-	return ENTRY_ERROR;
-      }
+    {
+      /* POSIX ACLs may contain deleted entries.  Just ignore them. */
+      if (posix && aclbufp[pos].a_type == ACL_DELETED_TAG)
+	continue;
+      /* POSIX defines two sorts of ACLs, access and default, none of which
+	 is supposed to have the ACL_DEFAULT flag set. */
+      if (posix && (aclbufp[pos].a_type & ACL_DEFAULT))
+	{
+	  if (which)
+	    *which = pos;
+	  return ENTRY_ERROR;
+	}
+      switch (aclbufp[pos].a_type)
+	{
+	case USER_OBJ:
+	  if (has_user_obj)
+	    {
+	      if (which)
+		*which = pos;
+	      return USER_ERROR;
+	    }
+	  has_user_obj = true;
+	  break;
+	case GROUP_OBJ:
+	  if (has_group_obj)
+	    {
+	      if (which)
+		*which = pos;
+	      return GRP_ERROR;
+	    }
+	  has_group_obj = true;
+	  break;
+	case OTHER_OBJ:
+	  if (has_other_obj)
+	    {
+	      if (which)
+		*which = pos;
+	      return OTHER_ERROR;
+	    }
+	  has_other_obj = true;
+	  break;
+	case CLASS_OBJ:
+	  if (has_class_obj)
+	    {
+	      if (which)
+		*which = pos;
+	      return CLASS_ERROR;
+	    }
+	  has_class_obj = true;
+	  break;
+	case USER:
+	case GROUP:
+	  if ((pos2 = searchace (aclbufp + pos + 1, nentries - pos - 1,
+				 aclbufp[pos].a_type, aclbufp[pos].a_id)) >= 0)
+	    {
+	      if (which)
+		*which = pos2;
+	      return DUPLICATE_ERROR;
+	    }
+	  has_ug_objs = true;
+	  break;
+	case DEF_USER_OBJ:
+	  if (has_def_user_obj)
+	    {
+	      if (which)
+		*which = pos;
+	      return USER_ERROR;
+	    }
+	  has_def_objs = has_def_user_obj = true;
+	  break;
+	case DEF_GROUP_OBJ:
+	  if (has_def_group_obj)
+	    {
+	      if (which)
+		*which = pos;
+	      return GRP_ERROR;
+	    }
+	  has_def_objs = has_def_group_obj = true;
+	  break;
+	case DEF_OTHER_OBJ:
+	  if (has_def_other_obj)
+	    {
+	      if (which)
+		*which = pos;
+	      return OTHER_ERROR;
+	    }
+	  has_def_objs = has_def_other_obj = true;
+	  break;
+	case DEF_CLASS_OBJ:
+	  if (has_def_class_obj)
+	    {
+	      if (which)
+		*which = pos;
+	      return CLASS_ERROR;
+	    }
+	  has_def_objs = has_def_class_obj = true;
+	  break;
+	case DEF_USER:
+	case DEF_GROUP:
+	  if ((pos2 = searchace (aclbufp + pos + 1, nentries - pos - 1,
+				 aclbufp[pos].a_type, aclbufp[pos].a_id)) >= 0)
+	    {
+	      if (which)
+		*which = pos2;
+	      return DUPLICATE_ERROR;
+	    }
+	  has_def_objs = has_def_ug_objs = true;
+	  break;
+	default:
+	  if (which)
+	    *which = pos;
+	  return ENTRY_ERROR;
+	}
+    }
   if (!has_user_obj
       || !has_group_obj
       || !has_other_obj
-      || (has_def_objs
-	  && (!has_def_user_obj || !has_def_group_obj || !has_def_other_obj))
-      || (has_ug_objs && !has_class_obj)
-      || (has_def_ug_objs && !has_def_class_obj)
-     )
+      || (has_ug_objs && !has_class_obj))
+    {
+      if (which)
+	*which = -1;
+      return MISS_ERROR;
+    }
+  /* Check for missing default entries only on Solaris ACLs. */
+  if (!posix &&
+      ((has_def_objs
+	&& !(has_def_user_obj && has_def_group_obj && has_def_other_obj))
+       || (has_def_ug_objs && !has_def_class_obj)))
     {
       if (which)
 	*which = -1;
       return MISS_ERROR;
     }
   return 0;
+}
+
+extern "C" int
+aclcheck32 (aclent_t *aclbufp, int nentries, int *which)
+{
+  return __aclcheck (aclbufp, nentries, which, false);
+}
+
+/* For the sake of acl_calc_mask, return -1 if the ACL doesn't need a mask
+   or if a mask entry already exists (__aclcalcmask sets the mask by itself).
+   Otherwise return the mask value so acl_calc_mask can create a mask entry.
+   This doesn't matter when called from aclsort. */
+mode_t
+__aclcalcmask (aclent_t *aclbufp, int nentries)
+{
+  mode_t mask = 0;
+  bool need_mask = false;
+  int mask_idx = -1;
+
+  for (int idx = 0; idx < nentries; ++idx)
+    switch (aclbufp[idx].a_type)
+      {
+      case USER:
+      case GROUP:
+	need_mask = true;
+	/*FALLTHRU*/
+      case GROUP_OBJ:
+	mask |= aclbufp[idx].a_perm;
+	break;
+      case CLASS_OBJ:
+	mask_idx = idx;
+	break;
+      default:
+	break;
+      }
+  if (mask_idx != -1)
+    aclbufp[mask_idx].a_perm = mask;
+  if (need_mask && mask_idx == -1)
+    return mask;
+  return (acl_perm_t) -1;
 }
 
 static int
@@ -1306,20 +1440,32 @@ acecmp (const void *a1, const void *a2)
 #undef ace
 }
 
-extern "C" int
-aclsort32 (int nentries, int, aclent_t *aclbufp)
+/* Sorts any acl.  Called from sec_posixacl.cc. */
+int
+__aclsort (int nentries, aclent_t *aclbufp)
 {
-  if (aclcheck32 (aclbufp, nentries, NULL))
+  if (!aclbufp || nentries < 0)
     {
       set_errno (EINVAL);
       return -1;
     }
-  if (!aclbufp || nentries < 1)
+  if (nentries > 0)
+    qsort ((void *) aclbufp, nentries, sizeof (aclent_t), acecmp);
+  return 0;
+}
+
+extern "C" int
+aclsort32 (int nentries, int calclass, aclent_t *aclbufp)
+{
+  if (!aclbufp || nentries < MIN_ACL_ENTRIES
+      || aclcheck32 (aclbufp, nentries, NULL))
     {
       set_errno (EINVAL);
       return -1;
     }
   qsort ((void *) aclbufp, nentries, sizeof (aclent_t), acecmp);
+  if (calclass)
+    __aclcalcmask (aclbufp, nentries);
   return 0;
 }
 
@@ -1412,78 +1558,224 @@ aclfrompbits32 (aclent_t *aclbufp, int nentries, mode_t *pbitsp)
 }
 
 static char *
-permtostr (mode_t perm)
+permtostr (char *bufp, mode_t perm)
 {
-  static char pbuf[4];
+  *bufp++ = (perm & S_IROTH) ? 'r' : '-';
+  *bufp++ = (perm & S_IWOTH) ? 'w' : '-';
+  *bufp++ = (perm & S_IXOTH) ? 'x' : '-';
+  return bufp;
+}
 
-  pbuf[0] = (perm & S_IROTH) ? 'r' : '-';
-  pbuf[1] = (perm & S_IWOTH) ? 'w' : '-';
-  pbuf[2] = (perm & S_IXOTH) ? 'x' : '-';
-  pbuf[3] = '\0';
-  return pbuf;
+#define _OPT(o) (options & (o))
+
+#define _CHK(l) \
+		  if (bufp + (l) >= buf + 2 * NT_MAX_PATH - 1) \
+		    { \
+		      set_errno (ENOMEM); \
+		      return NULL; \
+		    }
+#define _CPY(s)	({ \
+		  const char *_s = (s); \
+		  _CHK (strlen (_s)); \
+		  bufp = stpcpy (bufp, _s); \
+		})
+#define _PTS(p) { \
+		  _CHK (3); \
+		  bufp = permtostr (bufp, p); \
+		}
+
+#define _CMP(s)		(!strncmp (bufp, acl_part[s].str, acl_part[s].len))
+
+struct _acl_part
+{
+  const char *str;
+  size_t len;
+};
+
+static _acl_part acl_part_l[] =
+{
+  { "default:",	8 },
+  { "user:",	5 },
+  { "group:",	6 },
+  { "mask:",	5 },
+  { "other:",	6 }
+};
+
+static _acl_part acl_part_s[] =
+{
+  { "d:",	2 },
+  { "u:",	2 },
+  { "g:",	2 },
+  { "m:",	2 },
+  { "o:",	2 }
+};
+
+enum _acl_type {
+  default_s,
+  user_s,
+  group_s,
+  mask_s,
+  other_s,
+  none_s
+};
+
+char *
+__acltotext (aclent_t *aclbufp, int aclcnt, const char *prefix, char separator,
+	     int options)
+{
+  if (!aclbufp || aclcnt < 1 || aclcnt > MAX_ACL_ENTRIES
+      || aclsort32 (aclcnt, 0, aclbufp))
+    {
+      set_errno (EINVAL);
+      return NULL;
+    }
+  cyg_ldap cldap;
+  tmp_pathbuf tp;
+  char *buf = tp.t_get ();
+  char *bufp = buf;
+  char *entry_start;
+  bool first = true;
+  struct passwd *pw;
+  struct group *gr;
+  mode_t mask = S_IRWXO;
+  mode_t def_mask = S_IRWXO;
+  mode_t effective;
+  int pos;
+  _acl_part *acl_part = _OPT (TEXT_ABBREVIATE) ? acl_part_s : acl_part_l;
+
+  *bufp = '\0';
+  /* If effective rights are requested, fetch mask values. */
+  if (_OPT (TEXT_SOME_EFFECTIVE | TEXT_ALL_EFFECTIVE))
+    {
+      if ((pos = searchace (aclbufp, aclcnt, CLASS_OBJ)) >= 0)
+	mask = aclbufp[pos].a_perm;
+      if ((pos = searchace (aclbufp, aclcnt, DEF_CLASS_OBJ)) >= 0)
+	def_mask = aclbufp[pos].a_perm;
+    }
+  for (pos = 0; pos < aclcnt; ++pos)
+    {
+      if (!first)
+	{
+	  _CHK (1);
+	  *bufp++ = separator;
+	}
+      first = false;
+      /* Rememeber start position of entry to compute TEXT_SMART_INDENT tabs. */
+      entry_start = bufp;
+      /* prefix */
+      if (prefix)
+	_CPY (prefix);
+      /* Solaris default acl? */
+      if (!_OPT (TEXT_IS_POSIX) && aclbufp[pos].a_type & ACL_DEFAULT)
+	_CPY (acl_part[default_s].str);
+      /* acl type */
+      switch (aclbufp[pos].a_type & ~ACL_DEFAULT)
+	{
+	case USER_OBJ:
+	case USER:
+	  _CPY (acl_part[user_s].str);
+	  break;
+	case GROUP_OBJ:
+	case GROUP:
+	  _CPY (acl_part[group_s].str);
+	  break;
+	case CLASS_OBJ:
+	  _CPY (acl_part[mask_s].str);
+	  break;
+	case OTHER_OBJ:
+	  _CPY (acl_part[other_s].str);
+	  break;
+	}
+      /* id, if any  */
+      switch (aclbufp[pos].a_type & ~ACL_DEFAULT)
+	{
+	case USER:
+	  if (_OPT (TEXT_NUMERIC_IDS)
+	      || !(pw = internal_getpwuid (aclbufp[pos].a_id, &cldap)))
+	    {
+	      _CHK (11);
+	      bufp += __small_sprintf (bufp, "%u:", aclbufp[pos].a_id);
+	    }
+	  else
+	    {
+	      _CHK (strlen (pw->pw_name + 1));
+	      bufp += __small_sprintf (bufp, "%s:", pw->pw_name);
+	    }
+	  break;
+	case GROUP:
+	  if (_OPT (TEXT_NUMERIC_IDS)
+	      || !(gr = internal_getgrgid (aclbufp[pos].a_id, &cldap)))
+	    {
+	      _CHK (11);
+	      bufp += __small_sprintf (bufp, "%u:", aclbufp[pos].a_id);
+	    }
+	  else
+	    {
+	      _CHK (strlen (gr->gr_name));
+	      bufp += __small_sprintf (bufp, "%s:", gr->gr_name);
+	    }
+	  break;
+	default:
+	  _CPY (":");
+	  break;
+	}
+      /* real permissions */
+      _PTS (aclbufp[pos].a_perm);
+      if (!_OPT (TEXT_SOME_EFFECTIVE | TEXT_ALL_EFFECTIVE))
+	continue;
+      /* effective permissions */
+      switch (aclbufp[pos].a_type)
+	{
+	case USER:
+	case GROUP_OBJ:
+	case GROUP:
+	  effective = aclbufp[pos].a_perm & mask;
+	  break;
+	case DEF_USER:
+	case DEF_GROUP_OBJ:
+	case DEF_GROUP:
+	  effective = aclbufp[pos].a_perm & def_mask;
+	  break;
+	default:
+	  continue;
+	}
+      if (_OPT (TEXT_ALL_EFFECTIVE) || effective != aclbufp[pos].a_perm)
+	{
+	  if (_OPT (TEXT_SMART_INDENT))
+	    {
+	      int tabs = 3 - (bufp - entry_start) / 8;
+	      if (tabs-- > 0)
+		{
+		  _CHK (tabs);
+		  while (tabs-- > 0)
+		    *bufp++ = '\t';
+		}
+	    }
+	  _CPY ("\t#effective:");
+	  _PTS (effective);
+	}
+    }
+  if (_OPT (TEXT_END_SEPARATOR))
+    {
+      _CHK (1);
+      *bufp++ = separator;
+    }
+  *bufp = '\0';
+  return strdup (buf);
 }
 
 extern "C" char *
 acltotext32 (aclent_t *aclbufp, int aclcnt)
 {
-  if (!aclbufp || aclcnt < 1 || aclcnt > MAX_ACL_ENTRIES
-      || aclcheck32 (aclbufp, aclcnt, NULL))
-    {
-      set_errno (EINVAL);
-      return NULL;
-    }
-  char buf[32000];
-  buf[0] = '\0';
-  bool first = true;
-
-  for (int pos = 0; pos < aclcnt; ++pos)
-    {
-      if (!first)
-	strcat (buf, ",");
-      first = false;
-      if (aclbufp[pos].a_type & ACL_DEFAULT)
-	strcat (buf, "default");
-      switch (aclbufp[pos].a_type & ~ACL_DEFAULT)
-	{
-	case USER_OBJ:
-	  __small_sprintf (buf + strlen (buf), "user::%s",
-		   permtostr (aclbufp[pos].a_perm));
-	  break;
-	case USER:
-	  __small_sprintf (buf + strlen (buf), "user:%d:%s",
-		   aclbufp[pos].a_id, permtostr (aclbufp[pos].a_perm));
-	  break;
-	case GROUP_OBJ:
-	  __small_sprintf (buf + strlen (buf), "group::%s",
-		   permtostr (aclbufp[pos].a_perm));
-	  break;
-	case GROUP:
-	  __small_sprintf (buf + strlen (buf), "group:%d:%s",
-		   aclbufp[pos].a_id, permtostr (aclbufp[pos].a_perm));
-	  break;
-	case CLASS_OBJ:
-	  __small_sprintf (buf + strlen (buf), "mask::%s",
-		   permtostr (aclbufp[pos].a_perm));
-	  break;
-	case OTHER_OBJ:
-	  __small_sprintf (buf + strlen (buf), "other::%s",
-		   permtostr (aclbufp[pos].a_perm));
-	  break;
-	default:
-	  set_errno (EINVAL);
-	  return NULL;
-	}
-    }
-  return strdup (buf);
+  return __acltotext (aclbufp, aclcnt, NULL, ',', 0);
 }
 
 static mode_t
-permfromstr (char *perm)
+permfromstr (char *perm, bool posix_long)
 {
   mode_t mode = 0;
+  int idx;
 
-  if (strlen (perm) != 3)
-    return 01000;
   if (perm[0] == 'r')
     mode |= S_IROTH;
   else if (perm[0] != '-')
@@ -1496,120 +1788,170 @@ permfromstr (char *perm)
     mode |= S_IXOTH;
   else if (perm[2] != '-')
     return 01000;
-  return mode;
+  idx = 3;
+  /* In posix long mode, only tabs up to a hash sign allowed. */
+  if (posix_long)
+    while (perm[idx] == '\t')
+      ++idx;
+  if (perm[idx] == '\0' || (posix_long && perm[idx] == '#'))
+    return mode;
+  return 01000;
 }
 
-extern "C" aclent_t *
-aclfromtext32 (char *acltextp, int *)
+void *
+__aclfromtext (const char *acltextp, int *aclcnt, bool posix)
 {
-  if (!acltextp)
+  if (!acltextp || strlen (acltextp) >= 2 * NT_MAX_PATH)
     {
       set_errno (EINVAL);
       return NULL;
     }
-  char buf[strlen (acltextp) + 1];
-  aclent_t lacl[MAX_ACL_ENTRIES];
-  memset (lacl, 0, sizeof lacl);
-  int pos = 0;
-  strcpy (buf, acltextp);
-  char *lasts;
   cyg_ldap cldap;
-  for (char *c = strtok_r (buf, ",", &lasts);
-       c;
-       c = strtok_r (NULL, ",", &lasts))
+  tmp_pathbuf tp;
+  const char *delim;
+  _acl_part *acl_part;
+  char *bufp, *lasts, *qualifier;
+  int pos = 0;
+  int acl_type;
+
+  aclent_t *lacl = (aclent_t *) tp.c_get ();
+  memset (lacl, 0, MAX_ACL_ENTRIES * sizeof (aclent_t *));
+  char *buf = tp.t_get ();
+  stpcpy (buf, acltextp);
+
+  if (posix)
     {
-      if (!strncmp (c, "default", 7))
+      /* Posix long or short form.  Any \n in the string means long form. */
+      if (strchr (buf, '\n'))
+	{
+	  delim = "\n";
+	  acl_part = acl_part_l;
+	}
+      else
+	{
+	  delim = ",";
+	  acl_part = acl_part_s;
+	}
+    }
+  else
+    {
+      /* Solaris aclfromtext format. */
+      delim = ",";
+      acl_part = acl_part_l;
+    }
+
+  for (bufp = strtok_r (buf, delim, &lasts);
+       bufp;
+       bufp = strtok_r (NULL, delim, &lasts))
+    {
+      /* Handle default acl entries only for Solaris ACLs. */
+      if (!posix && _CMP (default_s))
 	{
 	  lacl[pos].a_type |= ACL_DEFAULT;
-	  c += 7;
+	  bufp += acl_part[default_s].len;
 	}
-      if (!strncmp (c, "user:", 5))
+      lacl[pos].a_id = ACL_UNDEFINED_ID;
+      for (acl_type = user_s; acl_type < none_s; ++acl_type)
+	if (_CMP (acl_type))
+	  break;
+      if (acl_type == none_s)
 	{
-	  if (c[5] == ':')
-	    lacl[pos].a_type |= USER_OBJ;
-	  else
+	  set_errno (EINVAL);
+	  return NULL;
+	}
+      bufp += acl_part[acl_type].len;
+      switch (acl_type)
+	{
+	case user_s:
+	case group_s:
+	  qualifier = bufp;
+	  bufp = strchrnul (bufp, ':');
+	  *bufp++ = '\0';
+	  /* No qualifier?  USER_OBJ or GROUP_OBJ */
+	  if (!*qualifier)
 	    {
-	      lacl[pos].a_type |= USER;
-	      c += 5;
-	      if (isalpha (*c))
+	      lacl[pos].a_type |= (acl_type == user_s) ? USER_OBJ : GROUP_OBJ;
+	      break;
+	    }
+	  /* Some qualifier, USER or GROUP */
+	  lacl[pos].a_type |= (acl_type == user_s) ? USER : GROUP;
+	  if (isdigit (*qualifier))
+	    {
+	      char *ep;
+
+	      id_t id = strtol (qualifier, &ep, 10);
+	      if (*ep == '\0')
 		{
-		  struct passwd *pw = internal_getpwnam (c, &cldap);
-		  if (!pw)
-		    {
-		      set_errno (EINVAL);
-		      return NULL;
-		    }
-		  lacl[pos].a_id = pw->pw_uid;
-		  c = strchrnul (c, ':');
-		}
-	      else if (isdigit (*c))
-		lacl[pos].a_id = strtol (c, &c, 10);
-	      if (*c != ':')
-		{
-		  set_errno (EINVAL);
-		  return NULL;
+		  lacl[pos].a_id = id;
+		  break;
 		}
 	    }
-	}
-      else if (!strncmp (c, "group:", 6))
-	{
-	  if (c[5] == ':')
-	    lacl[pos].a_type |= GROUP_OBJ;
+	  if (acl_type == user_s)
+	    {
+	      struct passwd *pw = internal_getpwnam (qualifier, &cldap);
+	      if (pw)
+		lacl[pos].a_id = pw->pw_uid;
+	    }
 	  else
 	    {
-	      lacl[pos].a_type |= GROUP;
-	      c += 5;
-	      if (isalpha (*c))
-		{
-		  struct group *gr = internal_getgrnam (c, &cldap);
-		  if (!gr)
-		    {
-		      set_errno (EINVAL);
-		      return NULL;
-		    }
-		  lacl[pos].a_id = gr->gr_gid;
-		  c = strchrnul (c, ':');
-		}
-	      else if (isdigit (*c))
-		lacl[pos].a_id = strtol (c, &c, 10);
-	      if (*c != ':')
-		{
-		  set_errno (EINVAL);
-		  return NULL;
-		}
+	      struct group *gr = internal_getgrnam (qualifier, &cldap);
+	      if (gr)
+		lacl[pos].a_id = gr->gr_gid;
 	    }
-	}
-      else if (!strncmp (c, "mask:", 5))
-	{
-	  if (c[5] == ':')
-	    lacl[pos].a_type |= CLASS_OBJ;
-	  else
+	  if (lacl[pos].a_id == ACL_UNDEFINED_ID)
 	    {
 	      set_errno (EINVAL);
 	      return NULL;
 	    }
-	}
-      else if (!strncmp (c, "other:", 6))
-	{
-	  if (c[5] == ':')
-	    lacl[pos].a_type |= OTHER_OBJ;
-	  else
+	  break;
+	case mask_s:
+	case other_s:
+	  if (*bufp++ != ':')
 	    {
 	      set_errno (EINVAL);
 	      return NULL;
 	    }
+	  lacl[pos].a_type |= (acl_type == mask_s) ? CLASS_OBJ : OTHER_OBJ;
+	  break;
 	}
-      if ((lacl[pos].a_perm = permfromstr (c)) == 01000)
+      /* In posix long mode, the next char after the permissions may be a tab
+	 followed by effective permissions we can ignore here. */
+      if ((lacl[pos].a_perm = permfromstr (bufp, *delim == '\n')) == 01000)
 	{
 	  set_errno (EINVAL);
 	  return NULL;
 	}
       ++pos;
     }
-  aclent_t *aclp = (aclent_t *) malloc (pos * sizeof (aclent_t));
-  if (aclp)
-    memcpy (aclp, lacl, pos * sizeof (aclent_t));
-  return aclp;
+  if (posix)
+    {
+      acl_t acl = (acl_t) acl_init (pos);
+      if (acl)
+	{
+	  memcpy (acl->entry, lacl, pos * sizeof (aclent_t));
+	  acl->count = pos;
+	  if (aclcnt)
+	    *aclcnt = pos;
+	}
+      return (void *) acl;
+    }
+  else
+    {
+      aclent_t *aclp = (aclent_t *) malloc (pos * sizeof (aclent_t));
+      if (aclp)
+	{
+	  memcpy (aclp, lacl, pos * sizeof (aclent_t));
+	  if (aclcnt)
+	    *aclcnt = pos;
+	}
+      return (void *) aclp;
+    }
+}
+
+extern "C" aclent_t *
+aclfromtext32 (char *acltextp, int *aclcnt)
+{
+  return (aclent_t *) __aclfromtext (acltextp, aclcnt, false);
 }
 
 #ifdef __x86_64__
@@ -1705,7 +2047,7 @@ acltotext (__aclent16_t *aclbufp, int aclcnt)
 }
 
 extern "C" __aclent16_t *
-aclfromtext (char *acltextp, int * aclcnt)
+aclfromtext (char *acltextp, int *aclcnt)
 {
   return (__aclent16_t *) aclfromtext32 (acltextp, aclcnt);
 }

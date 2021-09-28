@@ -7,6 +7,7 @@ INCLUDES = $(NEWLIB_CFLAGS) $(CROSS_CFLAGS) $(TARGET_CFLAGS)
 GENERAL_SOURCES = \
 	bcopy.c \
 	bzero.c \
+	explicit_bzero.c \
 	index.c \
 	memchr.c \
 	memcmp.c \
@@ -45,6 +46,8 @@ GENERAL_SOURCES = \
 	strxfrm.c  \
 	strstr.c \
 	swab.c \
+	timingsafe_bcmp.c \
+	timingsafe_memcmp.c \
 	u_strerr.c \
 	wcscat.c \
 	wcschr.c \

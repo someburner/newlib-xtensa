@@ -248,6 +248,9 @@ public:
       return (*this = sp) != NO_SID;
     }
 
+  const PSID create (DWORD auth, DWORD subauth_cnt, ...);
+  bool append (DWORD rid);
+
   /* Implemented in pwdgrp.h. */
   BOOL getfrompw (const struct passwd *pw);
   BOOL getfromgr (const struct group *gr);
@@ -467,7 +470,7 @@ int searchace (struct acl *, int, int, uid_t id = ILLEGAL_UID);
 PSECURITY_DESCRIPTOR set_posix_access (mode_t, uid_t, gid_t, struct acl *, int,
 				       security_descriptor &, bool);
 int get_posix_access (PSECURITY_DESCRIPTOR, mode_t *, uid_t *, gid_t *,
-		      struct acl *, int);
+		      struct acl *, int, bool * = NULL);
 int getacl (HANDLE, path_conv &, int, struct acl *);
 int setacl (HANDLE, path_conv &, int, struct acl *, bool &);
 

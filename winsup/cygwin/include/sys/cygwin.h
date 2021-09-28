@@ -59,8 +59,10 @@ enum
   /* Or these values to the above as needed. */
   CCP_ABSOLUTE = 0,	  	/* Request absolute path (default). 	*/
   CCP_RELATIVE = 0x100,    	/* Request to keep path relative.   	*/
-  CCP_PROC_CYGDRIVE = 0x200    	/* Request to return /proc/cygdrive
+  CCP_PROC_CYGDRIVE = 0x200,   	/* Request to return /proc/cygdrive
 				   path (only with CCP_*_TO_POSIX).   */
+
+  CCP_CONVFLAGS_MASK = 0x300,
 };
 typedef unsigned int cygwin_conv_path_t;
 
@@ -158,6 +160,7 @@ typedef enum
     CW_GETNSS_PWD_SRC,
     CW_GETNSS_GRP_SRC,
     CW_EXCEPTION_RECORD_FROM_SIGINFO_T,
+    CW_CYGHEAP_PROFTHR_ALL,
   } cygwin_getinfo_types;
 
 #define CW_LOCK_PINFO CW_LOCK_PINFO
@@ -219,6 +222,7 @@ typedef enum
 #define CW_GETNSS_PWD_SRC CW_GETNSS_PWD_SRC
 #define CW_GETNSS_GRP_SRC CW_GETNSS_GRP_SRC
 #define CW_EXCEPTION_RECORD_FROM_SIGINFO_T CW_EXCEPTION_RECORD_FROM_SIGINFO_T
+#define CW_CYGHEAP_PROFTHR_ALL CW_CYGHEAP_PROFTHR_ALL
 
 /* Token type for CW_SET_EXTERNAL_TOKEN */
 enum
