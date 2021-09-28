@@ -139,6 +139,7 @@ _PTR	_EXFUN_NOTHROW(realloc,(_PTR __r, size_t __size));
 #ifndef __STRICT_ANSI__
 _PTR	_EXFUN(reallocf,(_PTR __r, size_t __size));
 char *	_EXFUN(realpath, (const char *__restrict path, char *__restrict resolved_path));
+int	_EXFUN(rpmatch, (const char *response));
 #endif
 _VOID	_EXFUN(srand,(unsigned __seed));
 double	_EXFUN(strtod,(const char *__restrict __n, char **__restrict __end_PTR));
@@ -285,12 +286,24 @@ _VOID	_EXFUN(qsort_r,(_PTR __base, size_t __nmemb, size_t __size, int (*_compar)
 
 /* On platforms where long double equals double.  */
 #ifdef _HAVE_LONG_DOUBLE
+extern long double _strtold_r (struct _reent *, const char *__restrict, char **__restrict);
 #if !defined(__STRICT_ANSI__) || \
   (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L) || \
   (defined(__cplusplus) && __cplusplus >= 201103L)
 extern long double strtold (const char *__restrict, char **__restrict);
 #endif
 #endif /* _HAVE_LONG_DOUBLE */
+
+/*
+ * If we're in a mode greater than C99, expose C11 functions.
+ */
+#if __ISO_C_VISIBLE >= 2011 || __cplusplus >= 201103L
+void *	aligned_alloc(size_t, size_t) __malloc_like __alloc_align(1)
+	    __alloc_size(2);
+int	at_quick_exit(void (*)(void));
+_Noreturn void
+	quick_exit(int);
+#endif /* __ISO_C_VISIBLE >= 2011 */
 
 _END_STD_C
 

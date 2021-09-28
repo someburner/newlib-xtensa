@@ -668,3 +668,106 @@ disabled by default in GDB and must be enabled by changing the
 ``remote system-call-allowed'' setting to a nonzero value.
 @end table
 @end ifset
+
+@page
+@node Reentrant Syscalls
+@section Reentrant covers for OS subroutines
+
+Since the system subroutines are used by other library routines that
+require reentrancy, @file{libc.a} provides cover routines (for example,
+the reentrant version of @code{fork} is @code{_fork_r}).  These cover
+routines are consistent with the other reentrant subroutines in this
+library, and achieve reentrancy by using a reserved global data block
+(@pxref{Reentrancy,,Reentrancy}).
+
+@menu
+* _close_r::	Reentrant version of close
+* _execve_r::	Reentrant version of execve
+* _fork_r::	Reentrant version of fork
+@ifset STDIO64
+* _fstat64_r::	Reentrant version of fstat64
+@end ifset
+* _fstat_r::	Reentrant version of fstat
+* _getpid_r::	Reentrant version of getpid
+* _kill_r::	Reentrant version of kill
+* _link_r::	Reentrant version of link
+@ifset STDIO64
+* _lseek64_r::	Reentrant version of lseek64
+@end ifset
+* _lseek_r::	Reentrant version of lseek
+@ifset STDIO64
+* _open64_r::	Reentrant version of open64
+@end ifset
+* _open_r::	Reentrant version of open
+* _read_r::	Reentrant version of read
+* _sbrk_r::	Reentrant version of sbrk
+@ifset STDIO64
+* _stat64_r::	Reentrant version of stat64
+@end ifset
+* _stat_r::	Reentrant version of stat
+* _times_r::	Reentrant version of times
+* _unlink_r::	Reentrant version of unlink
+* _wait_r::	Reentrant version of wait
+* _write_r::	Reentrant version of write
+@end menu
+
+@lowersections
+@page
+@include reent/closer.def
+
+@page
+@include reent/execr.def
+
+@ifset STDIO64
+@page
+@include reent/fstat64r.def
+@end ifset
+
+@page
+@include reent/fstatr.def
+
+@page
+@include reent/linkr.def
+
+@ifset STDIO64
+@page
+@include reent/lseek64r.def
+@end ifset
+
+@page
+@include reent/lseekr.def
+
+@ifset STDIO64
+@page
+@include reent/open64r.def
+@end ifset
+
+@page
+@include reent/openr.def
+
+@page
+@include reent/readr.def
+
+@page
+@include reent/sbrkr.def
+
+@page
+@include reent/signalr.def
+
+@ifset STDIO64
+@page
+@include reent/stat64r.def
+@end ifset
+
+@page
+@include reent/statr.def
+
+@page
+@include reent/timesr.def
+
+@page
+@include reent/unlinkr.def
+
+@page
+@include reent/writer.def
+@raisesections

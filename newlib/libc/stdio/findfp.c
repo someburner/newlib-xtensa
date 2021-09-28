@@ -298,7 +298,8 @@ static int
 _DEFUN(__fp_lock, (ptr),
        FILE * ptr)
 {
-  _flockfile (ptr);
+  if (!(ptr->_flags2 & __SNLK))
+    _flockfile (ptr);
 
   return 0;
 }
@@ -308,7 +309,8 @@ static int
 _DEFUN(__fp_unlock, (ptr),
        FILE * ptr)
 {
-  _funlockfile (ptr);
+  if (!(ptr->_flags2 & __SNLK))
+    _funlockfile (ptr);
 
   return 0;
 }

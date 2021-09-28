@@ -7,14 +7,17 @@ extern "C" {
 #endif
 
 #include "_ansi.h"
+#include <sys/cdefs.h>
 #include <sys/features.h>
 #include <sys/types.h>
+#include <sys/_sigset.h>
+#include <sys/_timespec.h>
 
 /* #ifndef __STRICT_ANSI__*/
 
-/* Cygwin defines it's own sigset_t in include/cygwin/signal.h */
-#ifndef __CYGWIN__
-typedef unsigned long sigset_t;
+#if !defined(_SIGSET_T_DECLARED)
+#define	_SIGSET_T_DECLARED
+typedef	__sigset_t	sigset_t;
 #endif
 
 #if defined(__rtems__)
@@ -107,6 +110,21 @@ struct sigaction {
 #define sa_sigaction  _signal_handlers._sigaction
 #endif
 
+#elif defined(__CYGWIN__)
+#include <cygwin/signal.h>
+#else
+#define SA_NOCLDSTOP 1  /* only value supported now for sa_flags */
+
+typedef void (*_sig_func_ptr)(int);
+
+struct sigaction 
+{
+	_sig_func_ptr sa_handler;
+	sigset_t sa_mask;
+	int sa_flags;
+};
+#endif /* defined(__rtems__) */
+
 #if __BSD_VISIBLE || __XSI_VISIBLE || __POSIX_VISIBLE >= 200112
 /*
  * Minimum and default signal stack constants. Allow for target overrides
@@ -125,6 +143,8 @@ struct sigaction {
 #define	SS_ONSTACK	0x1
 #define	SS_DISABLE	0x2
 
+#endif
+
 /*
  * Structure used in sigaltstack call.
  */
@@ -133,22 +153,6 @@ typedef struct sigaltstack {
   int       ss_flags; /* Flags.  */
   size_t    ss_size;  /* Stack size.  */
 } stack_t;
-#endif
-
-#elif defined(__CYGWIN__)
-#include <cygwin/signal.h>
-#else
-#define SA_NOCLDSTOP 1  /* only value supported now for sa_flags */
-
-typedef void (*_sig_func_ptr)(int);
-
-struct sigaction 
-{
-	_sig_func_ptr sa_handler;
-	sigset_t sa_mask;
-	int sa_flags;
-};
-#endif /* defined(__rtems__) */
 
 #define SIG_SETMASK 0	/* set mask with sigprocmask() */
 #define SIG_BLOCK 1	/* set of signals to block */
@@ -180,9 +184,9 @@ int _EXFUN(pthread_sigmask, (int how, const sigset_t *set, sigset_t *oset));
 int _EXFUN(_kill, (pid_t, int));
 #endif /* _COMPILING_NEWLIB */
 #endif /* __CYGWIN__ || __rtems__ */
-#if defined(__CYGWIN__) || defined(__rtems__) || defined(__SPU__)
+
 int _EXFUN(kill, (pid_t, int));
-#endif /* __CYGWIN__ || __rtems__ || __SPU__ */
+
 #if defined(__CYGWIN__) || defined(__rtems__)
 int _EXFUN(killpg, (pid_t, int));
 int _EXFUN(sigaction, (int, const struct sigaction *, struct sigaction *));
@@ -195,7 +199,7 @@ int _EXFUN(sigpending, (sigset_t *));
 int _EXFUN(sigsuspend, (const sigset_t *));
 int _EXFUN(sigpause, (int));
 
-#ifdef __rtems__
+#if defined(__CYGWIN__) || defined(__rtems__)
 #if __BSD_VISIBLE || __XSI_VISIBLE || __POSIX_VISIBLE >= 200112
 int _EXFUN(sigaltstack, (const stack_t *__restrict, stack_t *__restrict));
 #endif
@@ -347,6 +351,12 @@ int _EXFUN(sigqueue, (pid_t pid, int signo, const union sigval value));
 
 #ifdef __cplusplus
 }
+#endif
+
+#if defined(__CYGWIN__)
+#if __POSIX_VISIBLE >= 200809
+#include <sys/ucontext.h>
+#endif
 #endif
 
 #ifndef _SIGNAL_H_
