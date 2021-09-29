@@ -1,8 +1,5 @@
 /* fork.cc
 
-   Copyright 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006,
-   2007, 2008, 2009, 2010, 2011, 2012, 2013, 2015 Red Hat, Inc.
-
 This file is part of Cygwin.
 
 This software is a copyrighted work licensed under the terms of the
@@ -174,8 +171,6 @@ frok::child (volatile char * volatile here)
     }
 #endif
 
-  MALLOC_CHECK;
-
   /* Incredible but true:  If we use sockets and SYSV IPC shared memory,
      there's a good chance that a duplicated socket in the child occupies
      memory which is needed to duplicate shared memory from the parent
@@ -185,8 +180,6 @@ frok::child (volatile char * volatile here)
      fdtab before fixing up shared memory. */
   if (fixup_shms_after_fork ())
     api_fatal ("recreate_shm areas after fork failed");
-
-  MALLOC_CHECK;
 
   /* If we haven't dynamically loaded any dlls, just signal
      the parent.  Otherwise, load all the dlls, tell the parent
@@ -463,7 +456,6 @@ frok::parent (volatile char * volatile stack_here)
      Note: variables marked as NO_COPY will not be copied since they are
      placed in a protected segment.  */
 
-  MALLOC_CHECK;
   const void *impure_beg;
   const void *impure_end;
   const char *impure;
@@ -482,7 +474,6 @@ frok::parent (volatile char * volatile stack_here)
 
   __malloc_unlock ();
   locked = false;
-  MALLOC_CHECK;
   if (!rc)
     {
       this_errno = get_errno ();
@@ -622,7 +613,6 @@ fork ()
       }
   }
 
-  MALLOC_CHECK;
   if (ischild)
     {
       myself->process_state |= PID_ACTIVE;

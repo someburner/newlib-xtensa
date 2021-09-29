@@ -1,9 +1,6 @@
 /* environ.cc: Cygwin-adopted functions from newlib to manipulate
    process's environment.
 
-   Copyright 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
-   2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015 Red Hat, Inc.
-
 This software is a copyrighted work licensed under the terms of the
 Cygwin license.  Please consult the file "CYGWIN_LICENSE" for
 details. */
@@ -86,21 +83,8 @@ set_winsymlinks (const char *buf)
     allow_winsymlinks = WSYM_lnk;
   /* Make sure to try native symlinks only on systems supporting them. */
   else if (ascii_strncasematch (buf, "native", 6))
-    {
-      if (wincap.max_sys_priv () < SE_CREATE_SYMBOLIC_LINK_PRIVILEGE)
-	{
-	  if (!user_shared->warned_nonativesyms)
-	    {
-	      small_printf ("\"winsymlinks:%s\" option detected in CYGWIN environment variable.\n"
-			    "Native symlinks are not supported on Windows versions prior to\n"
-			    "Windows Vista/Server 2008.  This option will be ignored.\n", buf);
-	      user_shared->warned_nonativesyms = 1;
-	    }
-	}
-      else
-	allow_winsymlinks = ascii_strcasematch (buf + 6, "strict")
-			    ? WSYM_nativestrict : WSYM_native;
-    }
+    allow_winsymlinks = ascii_strcasematch (buf + 6, "strict")
+			? WSYM_nativestrict : WSYM_native;
 }
 
 /* The structure below is used to set up an array which is used to
@@ -126,7 +110,6 @@ static struct parse_thing
       } values[2];
   } known[] NO_COPY =
 {
-  {"detect_bloda", {&detect_bloda}, setbool, NULL, {{false}, {true}}},
   {"dosfilewarning", {&dos_file_warning}, setbool, NULL, {{false}, {true}}},
   {"error_start", {func: error_start_init}, isfunc, NULL, {{0}, {0}}},
   {"export", {&export_settings}, setbool, NULL, {{false}, {true}}},
@@ -393,7 +376,6 @@ win_env::~win_env ()
 void
 win_env::add_cache (const char *in_posix, const char *in_native)
 {
-  MALLOC_CHECK;
   posix = (char *) realloc (posix, strlen (in_posix) + 1);
   strcpy (posix, in_posix);
   if (in_native)
@@ -409,7 +391,6 @@ win_env::add_cache (const char *in_posix, const char *in_native)
       native = (char *) realloc (native, namelen + 1 + strlen (buf));
       stpcpy (stpcpy (native, name), buf);
     }
-  MALLOC_CHECK;
   if (immediate && cygwin_finished_initializing)
     {
       wchar_t s[sys_mbstowcs (NULL, 0, native) + 1];
@@ -489,7 +470,6 @@ posify_maybe (char **here, const char *value, char *outenv)
   debug_printf ("env var converted to %s", outenv);
   *here = strdup (outenv);
   free (src);
-  MALLOC_CHECK;
 }
 
 /* Returns pointer to value associated with name, if any, else NULL.
@@ -519,7 +499,6 @@ my_findenv (const char *name, int *offset)
 	  *offset = p - cur_environ ();
 	  return (char *) (++c);
 	}
-  MALLOC_CHECK;
   return NULL;
 }
 
@@ -657,7 +636,6 @@ _addenv (const char *name, const char *value, int overwrite)
   if (strcmp (name, "CYGWIN") == 0)
     parse_options (value);
 
-  MALLOC_CHECK;
   return 0;
 }
 
@@ -865,7 +843,6 @@ environ_init (char **envp, int envc)
 	  if (p)
 	    parse_options (p);
 	}
-      MALLOC_CHECK;
     }
   __except (NO_ERROR)
     {

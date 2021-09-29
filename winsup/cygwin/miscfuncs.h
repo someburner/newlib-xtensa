@@ -1,8 +1,5 @@
 /* miscfuncs.h: main Cygwin header file.
 
-   Copyright 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006,
-   2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015 Red Hat, Inc.
-
 This file is part of Cygwin.
 
 This software is a copyrighted work licensed under the terms of the
@@ -87,5 +84,7 @@ extern "C" HANDLE WINAPI CygwinCreateThread (LPTHREAD_START_ROUTINE thread_func,
 					     ULONG stacksize, ULONG guardsize,
 					     DWORD creation_flags,
 					     LPDWORD thread_id);
+
+void SetThreadName (DWORD dwThreadID, const char* threadName);
 
 #endif /*_MISCFUNCS_H*/

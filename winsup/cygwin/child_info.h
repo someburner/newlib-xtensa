@@ -1,8 +1,5 @@
 /* child_info.h: shared child info for cygwin
 
-   Copyright 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2008, 2009, 2011, 2012,
-   2013, 2015 Red Hat, Inc.
-
 This file is part of Cygwin.
 
 This software is a copyrighted work licensed under the terms of the
@@ -56,7 +53,7 @@ struct cchildren
 class child_info
 {
 public:
-  DWORD msv_count;	// zeroed on < W2K3, set to pseudo-count on Vista
+  DWORD msv_count;	// set to pseudo-count on Vista WOW64, zeroed otherwise
   DWORD cb;		// size of this record
   DWORD intro;		// improbable string
   DWORD magic;		// magic number unique to child_info

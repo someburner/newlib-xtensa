@@ -1,8 +1,5 @@
 /* thread.cc: Locking and threading module functions
 
-   Copyright 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008,
-   2009, 2010, 2011, 2012, 2013, 2014, 2015 Red Hat, Inc.
-
 This file is part of Cygwin.
 
 This software is a copyrighted work licensed under the terms of the
@@ -36,7 +33,8 @@ details. */
 
 extern "C" void __fp_lock_all ();
 extern "C" void __fp_unlock_all ();
-extern "C" int valid_sched_parameters(const struct sched_param *);
+extern "C" bool valid_sched_parameters(const struct sched_param *);
+extern "C" int sched_get_thread_priority(HANDLE thread);
 extern "C" int sched_set_thread_priority(HANDLE thread, int priority);
 static inline verifyable_object_state
   verifyable_object_isvalid (void const * objectptr, thread_magic_t magic,
@@ -531,12 +529,15 @@ pthread::postcreate ()
   valid = true;
 
   InterlockedIncrement (&MT_INTERFACE->threadcount);
-  /* FIXME: set the priority appropriately for system contention scope */
-  if (attr.inheritsched == PTHREAD_EXPLICIT_SCHED)
-    {
-      /* FIXME: set the scheduling settings for the new thread */
-      /* sched_thread_setparam (win32_obj_id, attr.schedparam); */
-    }
+
+  /* Per POSIX the new thread inherits the sched priority from its caller
+     thread if PTHREAD_INHERIT_SCHED is set.
+     FIXME: set the priority appropriately for system contention scope */
+  if (attr.inheritsched == PTHREAD_INHERIT_SCHED)
+    attr.schedparam.sched_priority
+	= sched_get_thread_priority (GetCurrentThread ());
+  if (attr.schedparam.sched_priority)
+    sched_set_thread_priority (win32_obj_id, attr.schedparam.sched_priority);
 }
 
 void
@@ -1105,7 +1106,7 @@ pthread::resume ()
 pthread_attr::pthread_attr ():verifyable_object (PTHREAD_ATTR_MAGIC),
 joinable (PTHREAD_CREATE_JOINABLE), contentionscope (PTHREAD_SCOPE_PROCESS),
 inheritsched (PTHREAD_INHERIT_SCHED), stackaddr (NULL), stacksize (0),
-guardsize (wincap.def_guard_page_size ())
+guardsize (wincap.def_guard_page_size ()), name (NULL)
 {
   schedparam.sched_priority = 0;
 }
@@ -1991,6 +1992,9 @@ pthread::thread_init_wrapper (void *arg)
   _my_tls.sigmask = thread->parent_sigmask;
   thread->set_tls_self_pointer ();
 
+  // Give thread default name
+  SetThreadName (GetCurrentThreadId (), program_invocation_short_name);
+
   thread->mutex.lock ();
 
   // if thread is detached force cleanup on exit
@@ -2175,9 +2179,6 @@ pthread::atfork (void (*prepare)(void), void (*parent)(void), void (*child)(void
 extern "C" int
 pthread_attr_init (pthread_attr_t *attr)
 {
-  if (pthread_attr::is_good_object (attr))
-    return EBUSY;
-
   *attr = new pthread_attr;
   if (!pthread_attr::is_good_object (attr))
     {
@@ -2578,6 +2579,71 @@ pthread_getattr_np (pthread_t thread, pthread_attr_t *attr)
   return 0;
 }
 
+/* For Linux compatibility, the length of a thread name is 16 characters. */
+#define THRNAMELEN 16
+
+extern "C" int
+pthread_getname_np (pthread_t thread, char *buf, size_t buflen)
+{
+  char *name;
+
+  if (!pthread::is_good_object (&thread))
+    return ESRCH;
+
+  if (!thread->attr.name)
+    name = program_invocation_short_name;
+  else
+    name = thread->attr.name;
+
+  /* Return ERANGE if the provided buffer is less than THRNAMELEN.  Truncate
+     and zero-terminate the name to fit in buf.  This means we always return
+     something if the buffer is THRNAMELEN or larger, but there is no way to
+     tell if we have the whole name. */
+  if (buflen < THRNAMELEN)
+    return ERANGE;
+
+  int ret = 0;
+  __try
+    {
+      strlcpy (buf, name, buflen);
+    }
+  __except (NO_ERROR)
+    {
+      ret = EFAULT;
+    }
+  __endtry
+
+  return ret;
+}
+
+extern "C" int
+pthread_setname_np (pthread_t thread, const char *name)
+{
+  char *oldname, *cp;
+
+  if (!pthread::is_good_object (&thread))
+    return ESRCH;
+
+  if (strlen (name) > THRNAMELEN)
+    return ERANGE;
+
+  cp = strdup (name);
+  if (!cp)
+    return ENOMEM;
+
+  oldname = thread->attr.name;
+  thread->attr.name = cp;
+
+  SetThreadName (GetThreadId (thread->win32_obj_id), thread->attr.name);
+
+  if (oldname)
+    free (oldname);
+
+  return 0;
+}
+
+#undef THRNAMELEN
+
 /* provided for source level compatability.
    See http://www.opengroup.org/onlinepubs/007908799/xsh/pthread_getconcurrency.html
 */
@@ -2604,9 +2670,7 @@ pthread_getschedparam (pthread_t thread, int *policy,
   if (!pthread::is_good_object (&thread))
     return ESRCH;
   *policy = SCHED_FIFO;
-  /* we don't return the current effective priority, we return the current
-     requested priority */
-  *param = thread->attr.schedparam;
+  param->sched_priority = sched_get_thread_priority (thread->win32_obj_id);
   return 0;
 }
 
@@ -2854,9 +2918,6 @@ pthread_cond_wait (pthread_cond_t *cond, pthread_mutex_t *mutex)
 extern "C" int
 pthread_condattr_init (pthread_condattr_t *condattr)
 {
-  if (pthread_condattr::is_good_object (condattr))
-    return EBUSY;
-
   *condattr = new pthread_condattr;
   if (!pthread_condattr::is_good_object (condattr))
     {
@@ -3040,9 +3101,6 @@ pthread_rwlock_unlock (pthread_rwlock_t *rwlock)
 extern "C" int
 pthread_rwlockattr_init (pthread_rwlockattr_t *rwlockattr)
 {
-  if (pthread_rwlockattr::is_good_object (rwlockattr))
-    return EBUSY;
-
   *rwlockattr = new pthread_rwlockattr;
   if (!pthread_rwlockattr::is_good_object (rwlockattr))
     {
@@ -3370,9 +3428,6 @@ pthread_mutexattr_gettype (const pthread_mutexattr_t *attr, int *type)
 extern "C" int
 pthread_mutexattr_init (pthread_mutexattr_t *attr)
 {
-  if (pthread_mutexattr::is_good_object (attr))
-    return EBUSY;
-
   *attr = new pthread_mutexattr ();
   if (!pthread_mutexattr::is_good_object (attr))
     {

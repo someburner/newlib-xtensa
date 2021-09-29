@@ -1,8 +1,5 @@
 /* miscfuncs.cc: misc funcs that don't belong anywhere else
 
-   Copyright 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006,
-   2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015 Red Hat, Inc.
-
 This file is part of Cygwin.
 
 This software is a copyrighted work licensed under the terms of the
@@ -11,11 +8,13 @@ details. */
 
 #include "winsup.h"
 #include "miscfuncs.h"
+#include <ntsecapi.h>
 #include <sys/uio.h>
 #include <assert.h>
 #include <alloca.h>
 #include <limits.h>
 #include <sys/param.h>
+#include <sys/random.h>
 #include <wchar.h>
 #include "cygtls.h"
 #include "ntdll.h"
@@ -236,23 +235,60 @@ check_iovec (const struct iovec *iov, int iovcnt, bool forwrite)
   return -1;
 }
 
-/* There's a bug in ntsecapi.h (Mingw as well as MSFT).  SystemFunction036
-   is, in fact, a WINAPI function, but it's not defined as such.  Therefore
-   we have to do it correctly here. */
-#define RtlGenRandom SystemFunction036
-extern "C" BOOLEAN WINAPI RtlGenRandom (PVOID, ULONG);
-
-/* Used by arc2random, fhandler_socket and fhandler_random. */
 extern "C" int
 getentropy (void *ptr, size_t len)
 {
-  if (!RtlGenRandom (ptr, len))
+  /* Per BSD man page: The maximum buffer size permitted is 256 bytes.
+     If buflen exceeds this, an error of EIO will be indicated. */
+  if (len > 256)
     {
-      debug_printf ("%E = RtlGenRandom()");
+      debug_printf ("len (%U) > 256", len);
       set_errno (EIO);
       return -1;
     }
+  __try
+    {
+      if (!RtlGenRandom (ptr, len))
+	{
+	  debug_printf ("RtlGenRandom() = FALSE");
+	  set_errno (EIO);
+	  return -1;
+	}
+    }
+  __except (EFAULT)
+    {
+      return -1;
+    }
+  __endtry
   return 0;
+}
+
+extern "C" ssize_t
+getrandom (void *ptr, size_t len, unsigned int flags)
+{
+  if (flags & ~(GRND_NONBLOCK | GRND_RANDOM))
+    {
+      debug_printf ("invalid flags: %y", flags);
+      set_errno (EINVAL);
+      return -1;
+    }
+  /* Max. bytes returned by Linux call. */
+  len = MAX (len, (flags & GRND_RANDOM) ? 512 : 33554431);
+  __try
+    {
+      if (!RtlGenRandom (ptr, len))
+	{
+	  debug_printf ("RtlGenRandom() = FALSE");
+	  set_errno (EIO);
+	  return -1;
+	}
+    }
+  __except (EFAULT)
+    {
+      return -1;
+    }
+  __endtry
+  return len;
 }
 
 /* Try hard to schedule another thread.  
@@ -612,10 +648,9 @@ pthread_wrapper (PVOID arg)
      The below assembler code will release the OS stack after switching to our
      new stack. */
   wrapper_arg.stackaddr = dealloc_addr;
-  /* On post-XP systems, set thread stack guarantee matching the guardsize.
+  /* Set thread stack guarantee matching the guardsize.
      Note that the guardsize is one page bigger than the guarantee. */
-  if (wincap.has_set_thread_stack_guarantee ()
-      && wrapper_arg.guardsize > wincap.def_guard_page_size ())
+  if (wrapper_arg.guardsize > wincap.def_guard_page_size ())
     {
       wrapper_arg.guardsize -= wincap.page_size ();
       SetThreadStackGuarantee (&wrapper_arg.guardsize);
@@ -880,59 +915,38 @@ CygwinCreateThread (LPTHREAD_START_ROUTINE thread_func, PVOID thread_arg,
 #endif
       if (!real_stackaddr)
 	return NULL;
-      /* Set up committed region.  We have two cases: */
-      if (!wincap.has_set_thread_stack_guarantee ()
-	  && real_guardsize != wincap.def_guard_page_size ())
+      /* Set up committed region.  We set up the stack like the OS does,
+	 with a reserved region, the guard pages, and a commited region.
+	 We commit the stack commit size from the executable header, but
+	 at least PTHREAD_STACK_MIN (64K). */
+      static ULONG exe_commitsize;
+
+      if (!exe_commitsize)
 	{
-	  /* If guardsize is set to something other than the default guard page
-	     size, and if we're running on Windows XP 32 bit, we commit the
-	     entire stack, and, if guardsize is > 0, set up a guard page. */
-	  real_stacklimit = (PBYTE) real_stackaddr + wincap.page_size ();
-	  if (real_guardsize
-	      && !VirtualAlloc (real_stacklimit, real_guardsize, MEM_COMMIT,
-				PAGE_READWRITE | PAGE_GUARD))
-	    goto err;
-	  real_stacklimit += real_guardsize;
-	  if (!VirtualAlloc (real_stacklimit, real_stacksize - real_guardsize
-					      - wincap.page_size (),
-			     MEM_COMMIT, PAGE_READWRITE))
-	    goto err;
+	  PIMAGE_DOS_HEADER dosheader;
+	  PIMAGE_NT_HEADERS ntheader;
+
+	  dosheader = (PIMAGE_DOS_HEADER) GetModuleHandle (NULL);
+	  ntheader = (PIMAGE_NT_HEADERS)
+		     ((PBYTE) dosheader + dosheader->e_lfanew);
+	  exe_commitsize = ntheader->OptionalHeader.SizeOfStackCommit;
+	  exe_commitsize = roundup2 (exe_commitsize, wincap.page_size ());
 	}
-      else
-	{
-	  /* Otherwise we set up the stack like the OS does, with a reserved
-	     region, the guard pages, and a commited region.  We commit the
-	     stack commit size from the executable header, but at least
-	     PTHREAD_STACK_MIN (64K). */
-	  static ULONG exe_commitsize;
+      ULONG commitsize = exe_commitsize;
+      if (commitsize > real_stacksize - real_guardsize - wincap.page_size ())
+	commitsize = real_stacksize - real_guardsize - wincap.page_size ();
+      else if (commitsize < PTHREAD_STACK_MIN)
+	commitsize = PTHREAD_STACK_MIN;
+      real_stacklimit = (PBYTE) real_stackaddr + real_stacksize
+			- commitsize - real_guardsize;
+      if (!VirtualAlloc (real_stacklimit, real_guardsize, MEM_COMMIT,
+			 PAGE_READWRITE | PAGE_GUARD))
+	goto err;
+      real_stacklimit += real_guardsize;
+      if (!VirtualAlloc (real_stacklimit, commitsize, MEM_COMMIT,
+			 PAGE_READWRITE))
+	goto err;
 
-	  if (!exe_commitsize)
-	    {
-	      PIMAGE_DOS_HEADER dosheader;
-	      PIMAGE_NT_HEADERS ntheader;
-
-	      dosheader = (PIMAGE_DOS_HEADER) GetModuleHandle (NULL);
-	      ntheader = (PIMAGE_NT_HEADERS)
-			 ((PBYTE) dosheader + dosheader->e_lfanew);
-	      exe_commitsize = ntheader->OptionalHeader.SizeOfStackCommit;
-	      exe_commitsize = roundup2 (exe_commitsize, wincap.page_size ());
-	    }
-	  ULONG commitsize = exe_commitsize;
-	  if (commitsize > real_stacksize - real_guardsize
-			   - wincap.page_size ())
-	    commitsize = real_stacksize - real_guardsize - wincap.page_size ();
-	  else if (commitsize < PTHREAD_STACK_MIN)
-	    commitsize = PTHREAD_STACK_MIN;
-	  real_stacklimit = (PBYTE) real_stackaddr + real_stacksize
-			    - commitsize - real_guardsize;
-	  if (!VirtualAlloc (real_stacklimit, real_guardsize,
-			     MEM_COMMIT, PAGE_READWRITE | PAGE_GUARD))
-	    goto err;
-	  real_stacklimit += real_guardsize;
-	  if (!VirtualAlloc (real_stacklimit, commitsize, MEM_COMMIT,
-			     PAGE_READWRITE))
-	    goto err;
-      	}
       wrapper_arg->stackaddr = (PBYTE) real_stackaddr;
       wrapper_arg->stackbase = (PBYTE) real_stackaddr + real_stacksize;
       wrapper_arg->stacklimit = real_stacklimit;
@@ -1135,3 +1149,42 @@ wmemcpy:								\n\
 	.seh_endproc							\n\
 ");
 #endif
+
+/* Signal the thread name to any attached debugger
+
+   (See "How to: Set a Thread Name in Native Code"
+   https://msdn.microsoft.com/en-us/library/xcb2z8hs.aspx) */
+
+#define MS_VC_EXCEPTION 0x406D1388
+
+void
+SetThreadName(DWORD dwThreadID, const char* threadName)
+{
+  if (!IsDebuggerPresent ())
+    return;
+
+  ULONG_PTR info[] =
+    {
+      0x1000,                 /* type, must be 0x1000 */
+      (ULONG_PTR) threadName, /* pointer to threadname */
+      dwThreadID,             /* thread ID (+ flags on x86_64) */
+#ifdef _X86_
+      0,                      /* flags, must be zero */
+#endif
+    };
+
+#ifdef _X86_
+  /* On x86, for __try/__except to work, we must ensure our exception handler is
+     installed, which may not be the case if this is being called during early
+     initialization. */
+  exception protect;
+#endif
+
+  __try
+    {
+      RaiseException (MS_VC_EXCEPTION, 0, sizeof (info) / sizeof (ULONG_PTR),
+		      info);
+    }
+  __except (NO_ERROR)
+  __endtry
+}

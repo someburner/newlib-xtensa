@@ -1,8 +1,5 @@
 /* pinfo.cc: process table support
 
-   Copyright 1996, 1997, 1998, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
-   2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015 Red Hat, Inc.
-
 This file is part of Cygwin.
 
 This software is a copyrighted work licensed under the terms of the
@@ -452,7 +449,7 @@ _pinfo::_ctty (char *buf)
     {
       device d;
       d.parse (ctty);
-      __small_sprintf (buf, "ctty %s", d.name);
+      __small_sprintf (buf, "ctty %s", d.name ());
     }
   return buf;
 }
@@ -505,7 +502,7 @@ _pinfo::set_ctty (fhandler_termios *fh, int flags)
       if (!tc.getpgid () && pgid == pid)
 	tc.setpgid (pgid);
     }
-  debug_printf ("cygheap->ctty now %p, archetype %p", cygheap->ctty, fh->archetype);
+  debug_printf ("cygheap->ctty now %p, archetype %p", cygheap->ctty, fh ? fh->archetype : NULL);
   return ctty > 0;
 }
 
@@ -520,7 +517,8 @@ _pinfo::exists ()
 bool
 _pinfo::alive ()
 {
-  HANDLE h = OpenProcess (PROCESS_QUERY_INFORMATION, false, dwProcessId);
+  HANDLE h = OpenProcess (PROCESS_QUERY_LIMITED_INFORMATION, false,
+			  dwProcessId);
   if (h)
     CloseHandle (h);
   return !!h;
@@ -875,7 +873,8 @@ open_commune_proc_parms (DWORD pid, PRTL_USER_PROCESS_PARAMETERS prupp)
   PROCESS_BASIC_INFORMATION pbi;
   PEB lpeb;
 
-  proc = OpenProcess (PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+  proc = OpenProcess (PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ,
+		      FALSE, pid);
   if (!proc)
     return NULL;
   status = NtQueryInformationProcess (proc, ProcessBasicInformation,
@@ -1246,7 +1245,7 @@ winpids::add (DWORD& nelem, bool winpid, DWORD pid)
     {
       /* Open a process to prevent a subsequent exit from invalidating the
 	 shared memory region. */
-      onreturn = OpenProcess (PROCESS_QUERY_INFORMATION, false, pid);
+      onreturn = OpenProcess (PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
 
       /* If we couldn't open the process then we don't have rights to it and should
 	 make a copy of the shared memory area when it exists (it may not).  */

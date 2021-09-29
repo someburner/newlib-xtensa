@@ -1,8 +1,5 @@
 /* fhandler_console.cc
 
-   Copyright 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006,
-   2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014 Red Hat, Inc.
-
 This file is part of Cygwin.
 
 This software is a copyrighted work licensed under the terms of the
@@ -228,10 +225,9 @@ dev_console::get_console_cp ()
 }
 
 inline DWORD
-dev_console::str_to_con (mbtowc_p f_mbtowc, const char *charset,
-			 PWCHAR d, const char *s, DWORD sz)
+dev_console::str_to_con (mbtowc_p f_mbtowc, PWCHAR d, const char *s, DWORD sz)
 {
-  return sys_cp_mbstowcs (f_mbtowc, charset, d, CONVERT_LIMIT, s, sz);
+  return sys_cp_mbstowcs (f_mbtowc, d, CONVERT_LIMIT, s, sz);
 }
 
 bool
@@ -803,7 +799,7 @@ fhandler_console::scroll_buffer_screen (int x1, int y1, int x2, int y2, int xn, 
   if (y1 >= 0)
     y1 += con.b.srWindow.Top;
   if (y2 >= 0)
-    y1 += con.b.srWindow.Top;
+    y2 += con.b.srWindow.Top;
   if (yn >= 0)
     yn += con.b.srWindow.Top;
   con.scroll_buffer (get_output_handle (), x1, y1, x2, y2, xn, yn);
@@ -1219,30 +1215,64 @@ dev_console::scroll_window (HANDLE h, int x1, int y1, int x2, int y2)
     return false;
 
   SMALL_RECT sr;
-  int toscroll = 2 + dwEnd.Y - b.srWindow.Top;
-  int shrink = 1 + toscroll + b.srWindow.Bottom - b.dwSize.Y;
+  int toscroll = dwEnd.Y - b.srWindow.Top + 1;
   sr.Left = sr.Right = dwEnd.X = 0;
-  /* Can't increment dwEnd yet since we may not have space in
-     the buffer.  */
-  SetConsoleCursorPosition (h, dwEnd);
-  if (shrink > 0)
+
+  if (b.srWindow.Bottom + toscroll >= b.dwSize.Y)
     {
-      COORD c = b.dwSize;
-      c.Y = dwEnd.Y - shrink;
-      SetConsoleScreenBufferSize (h, c);
-      SetConsoleScreenBufferSize (h, b.dwSize);
-      dwEnd.Y = 0;
-      fillin (h);
-      toscroll = 2 + dwEnd.Y - b.srWindow.Top;
+      /* So we're at the end of the buffer and scrolling the console window
+	 would move us beyond the buffer.  What we do here is to scroll the
+	 console buffer upward by just as much so that the current last line
+	 becomes the last line just prior to the first window line.  That
+	 keeps the end of the console buffer intact, as desired. */
+      SMALL_RECT br;
+      COORD dest;
+      CHAR_INFO fill;
+
+      br.Left = 0;
+      br.Top = (b.srWindow.Bottom - b.srWindow.Top) + 1
+	       - (b.dwSize.Y - dwEnd.Y - 1);
+      br.Right = b.dwSize.X - 1;
+      br.Bottom = b.dwSize.Y - 1;
+      dest.X = dest.Y = 0;
+      fill.Char.AsciiChar = ' ';
+      fill.Attributes = current_win32_attr;
+      ScrollConsoleScreenBuffer (h, &br, NULL, dest, &fill);
+      /* Since we're moving the console buffer under the console window
+	 we only have to move the console window if the user scrolled the
+	 window upwards.  The number of lines is the distance to the
+	 buffer bottom. */
+      toscroll = b.dwSize.Y - b.srWindow.Bottom - 1;
+      /* Fix dwEnd to reflect the new cursor line.  Take the above scrolling
+	 into account and subtract 1 to account for the increment below. */
+      dwEnd.Y = b.dwCursorPosition.Y + toscroll - 1;
     }
+  if (toscroll)
+    {
+      /* FIXME: For some reason SetConsoleWindowInfo does not correctly
+	 set the scrollbars.  Calling SetConsoleCursorPosition here is
+	 just a workaround which doesn't cover all cases.  In some scenarios
+	 the scrollbars are still off by one console window size. */
 
-  sr.Top = sr.Bottom = toscroll;
-
-  SetConsoleWindowInfo (h, FALSE, &sr);
-
+      /* The reminder of the console buffer is big enough to simply move
+         the console window.  We have to set the cursor first, otherwise
+	 the scroll bars will not be corrected.  */
+      SetConsoleCursorPosition (h, dwEnd);
+      /* If the user scolled manually, setting the cursor position might scroll
+         the console window so that the cursor is not at the top.  Correct
+	 the action by moving the window down again so the cursor is one line
+	 above the new window position. */
+      GetConsoleScreenBufferInfo (h, &b);
+      if (b.dwCursorPosition.Y >= b.srWindow.Top)
+	toscroll = b.dwCursorPosition.Y - b.srWindow.Top + 1;
+      /* Move the window accordingly. */
+      sr.Top = sr.Bottom = toscroll;
+      SetConsoleWindowInfo (h, FALSE, &sr);
+    }
+  /* Eventually set cursor to new end position at the top of the window. */
   dwEnd.Y++;
   SetConsoleCursorPosition (h, dwEnd);
-
+  /* Fix up console buffer info. */
   fillin (h);
   return true;
 }
@@ -1255,12 +1285,23 @@ void __reg3
 fhandler_console::clear_screen (cltype xc1, cltype yc1, cltype xc2, cltype yc2)
 {
   HANDLE h = get_output_handle ();
+  SHORT oldEndY = con.dwEnd.Y;
+
   con.fillin (h);
 
   int x1 = con.set_cl_x (xc1);
   int y1 = con.set_cl_y (yc1);
   int x2 = con.set_cl_x (xc2);
   int y2 = con.set_cl_y (yc2);
+
+  /* Make correction for the following situation:  The console buffer
+     is only partially used and the user scrolled down into the as yet
+     unused area so far that the cursor is outside the window buffer. */
+  if (oldEndY < con.dwEnd.Y && oldEndY < con.b.srWindow.Top)
+    {
+      con.dwEnd.Y = con.b.dwCursorPosition.Y = oldEndY;
+      y1 = con.b.srWindow.Top;
+    }
 
   /* Detect special case - scroll the screen if we have a buffer in order to
      preserve the buffer. */
@@ -1960,21 +2001,12 @@ fhandler_console::write_normal (const unsigned char *src,
   const unsigned char *found = src;
   size_t ret;
   mbstate_t ps;
-  UINT cp = con.get_console_cp ();
-  const char *charset;
   mbtowc_p f_mbtowc;
 
-  if (cp)
-    {
-      /* The alternate charset is always 437, just as in the Linux console. */
-      f_mbtowc = __cp_mbtowc;
-      charset = "CP437";
-    }
-  else
-    {
-      f_mbtowc = cygheap->locale.mbtowc;
-      charset = cygheap->locale.charset;
-    }
+  /* The alternate charset is always 437, just as in the Linux console. */
+  f_mbtowc = con.get_console_cp () ? __cp_mbtowc (437) : __MBTOWC;
+  if (f_mbtowc == __ascii_mbtowc)
+    f_mbtowc = __utf8_mbtowc;
 
   /* First check if we have cached lead bytes of a former try to write
      a truncated multibyte sequence.  If so, process it. */
@@ -1985,7 +2017,7 @@ fhandler_console::write_normal (const unsigned char *src,
       memcpy (trunc_buf.buf + trunc_buf.len, src, cp_len);
       memset (&ps, 0, sizeof ps);
       switch (ret = f_mbtowc (_REENT, NULL, (const char *) trunc_buf.buf,
-			       trunc_buf.len + cp_len, charset, &ps))
+			       trunc_buf.len + cp_len, &ps))
 	{
 	case -2:
 	  /* Still truncated multibyte sequence?  Keep in trunc_buf. */
@@ -2010,9 +2042,9 @@ fhandler_console::write_normal (const unsigned char *src,
       /* Valid multibyte sequence?  Process. */
       if (nfound)
 	{
-	  buf_len = con.str_to_con (f_mbtowc, charset, write_buf,
-					   (const char *) trunc_buf.buf,
-					   nfound - trunc_buf.buf);
+	  buf_len = con.str_to_con (f_mbtowc, write_buf,
+				    (const char *) trunc_buf.buf,
+				    nfound - trunc_buf.buf);
 	  if (!write_console (write_buf, buf_len, done))
 	    {
 	      debug_printf ("multibyte sequence write failed, handle %p", get_output_handle ());
@@ -2033,7 +2065,7 @@ fhandler_console::write_normal (const unsigned char *src,
 	 && base_chars[*found] == NOR)
     {
       switch (ret = f_mbtowc (_REENT, NULL, (const char *) found,
-			       end - found, charset, &ps))
+			       end - found, &ps))
 	{
 	case -2: /* Truncated multibyte sequence.  Store for next write. */
 	  trunc_buf.len = end - found;
@@ -2056,8 +2088,7 @@ do_print:
   if (found != src)
     {
       DWORD len = found - src;
-      buf_len = con.str_to_con (f_mbtowc, charset, write_buf,
-				       (const char *) src, len);
+      buf_len = con.str_to_con (f_mbtowc, write_buf, (const char *) src, len);
       if (!buf_len)
 	{
 	  debug_printf ("conversion error, handle %p",
@@ -2136,7 +2167,7 @@ do_print:
 	      if (found + 1 < end)
 		{
 		  ret = __utf8_mbtowc (_REENT, NULL, (const char *) found + 1,
-				       end - found - 1, NULL, &ps);
+				       end - found - 1, &ps);
 		  if (ret != (size_t) -1)
 		    while (ret-- > 0)
 		      {
