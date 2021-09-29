@@ -592,10 +592,7 @@ TLSOFFSETS_H
 DIN_FILE
 DEF_DLL_ENTRY
 DLL_ENTRY
-DLL_NAME
-LIBSERVER
 configure_args
-SET_MAKE
 WINDRES
 STRIP
 RANLIB
@@ -606,12 +603,7 @@ LD
 DLLTOOL
 AS
 AR
-install_host
-all_host
-cygwin_headers
-newlib_headers
-windows_headers
-windows_libdir
+INCLUDES
 CPP
 ac_ct_CXX
 CXXFLAGS
@@ -681,8 +673,6 @@ target_builddir'
 ac_subst_files=''
 ac_user_opts='
 enable_option_checking
-with_windows_headers
-with_windows_libs
 enable_debugging
 '
       ac_precious_vars='build_alias
@@ -1312,13 +1302,6 @@ Optional Features:
   --disable-FEATURE       do not include FEATURE (same as --enable-FEATURE=no)
   --enable-FEATURE[=ARG]  include FEATURE [ARG=yes]
  --enable-debugging		Build a cygwin DLL which has more consistency checking for debugging
-
-Optional Packages:
-  --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
-  --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
-  --with-windows-headers=DIR
-                          specify where the windows includes are located
-  --with-windows-libs=DIR specify where the windows libraries are located
 
 Some influential environment variables:
   CC          C compiler command
@@ -3383,36 +3366,6 @@ ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $
 ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
-
-
-# Check whether --with-windows-headers was given.
-if test "${with_windows_headers+set}" = set; then :
-  withval=$with_windows_headers; test -z "$withval" && as_fn_error $? "must specify value for --with-windows-headers" "$LINENO" 5
-
-fi
-
-
-if test "x$with_cross_bootstrap" != "xyes"; then
-
-
-# Check whether --with-windows-libs was given.
-if test "${with_windows_libs+set}" = set; then :
-  withval=$with_windows_libs; test -z "$withval" && as_fn_error $? "must specify value for --with-windows-libs" "$LINENO" 5
-
-fi
-
-windows_libdir=$(realdirpath "$with_windows_libs")
-if test -z "$windows_libdir"; then
-    windows_libdir=$(realdirpath $(${ac_cv_prog_CC:-$CC} -xc /dev/null  -Wl,--verbose=1 -lntdll 2>&1 | sed -rn 's%^.*\s(\S+)/libntdll\..*succeeded%\1%p'))
-    if test -z "$windows_libdir"; then
-	as_fn_error $? "cannot find windows library files" "$LINENO" 5
-    fi
-fi
-
-
-
-fi
-
 ac_ext=cpp
 ac_cpp='$CXXCPP $CPPFLAGS'
 ac_compile='$CXX -c $CXXFLAGS $CPPFLAGS conftest.$ac_ext >&5'
@@ -3421,7 +3374,6 @@ ac_compiler_gnu=$ac_cv_cxx_compiler_gnu
 
 
 
-addto_CPPFLAGS -nostdinc
 : ${ac_cv_prog_CXX:=$CXX}
 : ${ac_cv_prog_CC:=$CC}
 
@@ -3436,40 +3388,11 @@ if test -z "$newlib_headers"; then
 fi
 newlib_headers="$target_builddir/newlib/targ-include $newlib_headers"
 
-if test -n "$with_windows_headers"; then
-    if test -e "$with_windows_headers/windef.h"; then
-	windows_headers="$with_windows_headers"
-    else
-	as_fn_error $? "cannot find windef.h in specified --with-windows-headers path: $saw_windows_headers" "$LINENO" 5;
-    fi
-elif test -d "$winsup_srcdir/w32api/include/windef.h"; then
-    windows_headers="$winsup_srcdir/w32api/include"
-else
-    windows_headers=$(cd $($ac_cv_prog_CC -xc /dev/null -E -include windef.h 2>/dev/null | sed -n 's%^# 1 "\([^"]*\)/windef\.h".*$%\1%p' | head -n1) 2>/dev/null && pwd)
-    if test -z "$windows_headers" -o ! -d "$windows_headers"; then
-	as_fn_error $? "cannot find windows header files" "$LINENO" 5
-    fi
-fi
-CC=$ac_cv_prog_CC
-CXX=$ac_cv_prog_CXX
-export CC
-export CXX
-
-
-
-
-
-case "$with_cross_host" in
-  ""|*cygwin*)
-    all_host="all_host"
-    install_host="install_host"
-    ;;
-  *)
-    all_host=
-    install_host=
-    ;;
-esac
-
+INCLUDES="-I${srcdir}/../cygwin -I${target_builddir}/winsup/cygwin"
+INCLUDES="${INCLUDES} -isystem ${cygwin_headers}"
+for h in ${newlib_headers}; do
+    INCLUDES="${INCLUDES} -isystem $h"
+done
 
 
 
@@ -4394,38 +4317,6 @@ else
 fi
 
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether ${MAKE-make} sets \$(MAKE)" >&5
-$as_echo_n "checking whether ${MAKE-make} sets \$(MAKE)... " >&6; }
-set x ${MAKE-make}
-ac_make=`$as_echo "$2" | sed 's/+/p/g; s/[^a-zA-Z0-9_]/_/g'`
-if eval \${ac_cv_prog_make_${ac_make}_set+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  cat >conftest.make <<\_ACEOF
-SHELL = /bin/sh
-all:
-	@echo '@@@%%%=$(MAKE)=@@@%%%'
-_ACEOF
-# GNU make sometimes prints "make[1]: Entering ...", which would confuse us.
-case `${MAKE-make} -f conftest.make 2>/dev/null` in
-  *@@@%%%=?*=@@@%%%*)
-    eval ac_cv_prog_make_${ac_make}_set=yes;;
-  *)
-    eval ac_cv_prog_make_${ac_make}_set=no;;
-esac
-rm -f conftest.make
-fi
-if eval test \$ac_cv_prog_make_${ac_make}_set = yes; then
-  { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
-$as_echo "yes" >&6; }
-  SET_MAKE=
-else
-  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
-$as_echo "no" >&6; }
-  SET_MAKE="MAKE=${MAKE-make}"
-fi
-
-
 # Check whether --enable-debugging was given.
 if test "${enable_debugging+set}" = set; then :
   enableval=$enable_debugging; case "${enableval}" in
@@ -4438,18 +4329,14 @@ esac
 fi
 
 
-
-
 case "$target_cpu" in
    i?86)
-		DLL_NAME="cygwin1.dll"
 		DLL_ENTRY="_dll_entry@12"
 		DEF_DLL_ENTRY="dll_entry@12"
 		DIN_FILE="i686.din"
 		TLSOFFSETS_H="tlsoffsets.h"
 		;;
    x86_64)
-		DLL_NAME="cygwin1.dll"
 		DLL_ENTRY="dll_entry"
 		DEF_DLL_ENTRY="dll_entry"
 		DIN_FILE="x86_64.din"
@@ -4467,8 +4354,6 @@ for f in $ac_configure_args; do
     esac
 done
 configure_args=$(/usr/bin/expr "$configure_args" : 'X \(.*\)')
-
-
 
 
 

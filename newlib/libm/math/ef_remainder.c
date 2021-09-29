@@ -17,7 +17,7 @@
 
 /* __ieee754_remainderf is provided by libgcc */
 
-#if 0
+#if 1
 
 #ifdef __STDC__
 static const float zero = 0.0;

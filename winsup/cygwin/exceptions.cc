@@ -28,6 +28,7 @@ details. */
 #include "ntdll.h"
 #include "exception.h"
 #include "posix_timer.h"
+#include "gcc_seh.h"
 
 /* Definitions for code simplification */
 #ifdef __x86_64__
@@ -460,10 +461,8 @@ cygwin_stackdump ()
   exc.dumpstack ();
 }
 
-#define TIME_TO_WAIT_FOR_DEBUGGER 10000
-
 extern "C" int
-try_to_debug (bool waitloop)
+try_to_debug ()
 {
   if (!debugger_command)
     return 0;
@@ -531,13 +530,17 @@ try_to_debug (bool waitloop)
 			&si,
 			&pi);
 
+  /* We want to stop here and wait until the error_start process attaches.  But
+     we can't wait here for the error_start process to exit, as if it's a
+     debugger, it might want to continue this thread.  So we busy wait until a
+     debugger attaches, which stops this process, after which it can decide if
+     we continue or not. */
+
   *dbg_end = L'\0';
   if (!dbg)
     system_printf ("Failed to start debugger, %E");
   else
     {
-      if (!waitloop)
-	return dbg;
       SetThreadPriority (GetCurrentThread (), THREAD_PRIORITY_IDLE);
       while (!being_debugged ())
 	Sleep (1);
@@ -741,7 +744,7 @@ exception::handle (EXCEPTION_RECORD *e, exception_list *frame, CONTEXT *in,
 	 Linux behaviour and also makes a lot of sense on Windows. */
       if (me.altstack.ss_flags)
 	global_sigs[SIGSEGV].sa_handler = SIG_DFL;
-      /*FALLTHRU*/
+      fallthrough;
     case STATUS_ARRAY_BOUNDS_EXCEEDED:
     case STATUS_IN_PAGE_ERROR:
     case STATUS_NO_MEMORY:
@@ -761,6 +764,16 @@ exception::handle (EXCEPTION_RECORD *e, exception_list *frame, CONTEXT *in,
 	 if gcc ever supports Windows style structured exception
 	 handling.  */
       return ExceptionContinueExecution;
+
+#ifdef __x86_64__
+    case STATUS_GCC_THROW:
+    case STATUS_GCC_UNWIND:
+    case STATUS_GCC_FORCED:
+      /* According to a comment in the GCC function
+	 _Unwind_RaiseException(), GCC expects us to continue all the
+	 (continuable) GCC exceptions that reach us. */
+      return ExceptionContinueExecution;
+#endif
 
     default:
       /* If we don't recognize the exception, we have to assume that
@@ -801,7 +814,7 @@ exception::handle (EXCEPTION_RECORD *e, exception_list *frame, CONTEXT *in,
   if (exit_state >= ES_SIGNAL_EXIT
       && (NTSTATUS) e->ExceptionCode != STATUS_CONTROL_C_EXIT)
     api_fatal ("Exception during process exit");
-  else if (!try_to_debug (0))
+  else if (!try_to_debug ())
     rtl_unwind (frame, e);
   else
     {
@@ -814,7 +827,7 @@ exception::handle (EXCEPTION_RECORD *e, exception_list *frame, CONTEXT *in,
   /* POSIX requires that for SIGSEGV and SIGBUS, si_addr should be set to the
      address of faulting memory reference.  For SIGILL and SIGFPE these should
      be the address of the faulting instruction.  Other signals are apparently
-     undefined so we just set those to the faulting instruction too.  */ 
+     undefined so we just set those to the faulting instruction too.  */
   si.si_addr = (si.si_signo == SIGSEGV || si.si_signo == SIGBUS)
 	       ? (void *) e->ExceptionInformation[1] : (void *) in->_GR(ip);
   me.incyg++;
@@ -1166,7 +1179,7 @@ extern "C" int
 sighold (int sig)
 {
   /* check that sig is in right range */
-  if (sig < 0 || sig >= NSIG)
+  if (sig < 0 || sig >= _NSIG)
     {
       set_errno (EINVAL);
       syscall_printf ("signal %d out of range", sig);
@@ -1182,7 +1195,7 @@ extern "C" int
 sigrelse (int sig)
 {
   /* check that sig is in right range */
-  if (sig < 0 || sig >= NSIG)
+  if (sig < 0 || sig >= _NSIG)
     {
       set_errno (EINVAL);
       syscall_printf ("signal %d out of range", sig);
@@ -1201,7 +1214,7 @@ sigset (int sig, _sig_func_ptr func)
   _sig_func_ptr prev;
 
   /* check that sig is in right range */
-  if (sig < 0 || sig >= NSIG || sig == SIGKILL || sig == SIGSTOP)
+  if (sig < 0 || sig >= _NSIG || sig == SIGKILL || sig == SIGSTOP)
     {
       set_errno (EINVAL);
       syscall_printf ("SIG_ERR = sigset (%d, %p)", sig, func);
@@ -1455,7 +1468,7 @@ sigpacket::process ()
 	    tls = NULL;
 	}
     }
-      
+
   /* !tls means no threads available to catch a signal. */
   if (!tls)
     {

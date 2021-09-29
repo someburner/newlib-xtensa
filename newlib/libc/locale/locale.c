@@ -78,12 +78,12 @@ This implementation also supports the modifiers <<"cjknarrow">> and
 <<"cjkwide">>, which affect how the functions <<wcwidth>> and <<wcswidth>>
 handle characters from the "CJK Ambiguous Width" category of characters
 described at http://www.unicode.org/reports/tr11/#Ambiguous.
-These characters have a width of 1 for singlebyte charsets and a width of 2
-for multibyte charsets other than UTF-8.
-For UTF-8, their width depends on the language specifier:
-it is 2 for <<"zh">> (Chinese), <<"ja">> (Japanese), and <<"ko">> (Korean),
-and 1 for everything else. Specifying <<"cjknarrow">> or <<"cjkwide">>
-forces a width of 1 or 2, respectively, independent of charset and language.
+These characters have a width of 1 for singlebyte charsets and UTF-8,
+and a width of 2 for multibyte charsets other than UTF-8. Specifying
+<<"cjknarrow">> or <<"cjkwide">> forces a width of 1 or 2, respectively.
+
+This implementation also supports the modifier <<"cjksingle">>
+to enforce single-width character properties.
 
 If you use <<NULL>> as the <[locale]> argument, <<setlocale>> returns a
 pointer to the string representing the current locale.  The acceptable
@@ -480,6 +480,7 @@ __loadlocale (struct __locale_t *loc, int category, char *new_locale)
   int mbc_max;
   wctomb_p l_wctomb;
   mbtowc_p l_mbtowc;
+  int cjksingle = 0;
   int cjknarrow = 0;
   int cjkwide = 0;
 
@@ -594,11 +595,13 @@ restart:
     }
   if (c && c[0] == '@')
     {
-      /* Modifier */
+      /* Modifier "cjksingle" is recognized to enforce single-width mode. */
       /* Modifiers "cjknarrow" or "cjkwide" are recognized to modify the
          behaviour of wcwidth() and wcswidth() for East Asian languages.
          For details see the comment at the end of this function. */
-      if (!strcmp (c + 1, "cjknarrow"))
+      if (!strcmp (c + 1, "cjksingle"))
+	cjksingle = 1;
+      else if (!strcmp (c + 1, "cjknarrow"))
 	cjknarrow = 1;
       else if (!strcmp (c + 1, "cjkwide"))
 	cjkwide = 1;
@@ -851,7 +854,7 @@ restart:
       c = charset + 3;
       if (*c == '-')
 	++c;
-      if (strcasecmp (c, "620"))
+      if (strcmp (c, "620"))
       	FAIL;
       val = 874;
       strcpy (charset, "CP874");
@@ -893,20 +896,18 @@ restart:
       loc->wctomb = l_wctomb;
       loc->mbtowc = l_mbtowc;
       __set_ctype (loc, charset);
+      /* Set CJK width mode (1: ambiguous-wide, 0: normal, -1: disabled). */
       /* Determine the width for the "CJK Ambiguous Width" category of
          characters. This is used in wcwidth(). Assume single width for
          single-byte charsets, and double width for multi-byte charsets
-         other than UTF-8. For UTF-8, use double width for the East Asian
-         languages ("ja", "ko", "zh"), and single width for everything else.
+         other than UTF-8. For UTF-8, use single width.
          Single width can also be forced with the "@cjknarrow" modifier.
          Double width can also be forced with the "@cjkwide" modifier.
        */
       loc->cjk_lang = cjkwide ||
-		      (!cjknarrow && mbc_max > 1
-		       && (charset[0] != 'U'
-			   || strncmp (locale, "ja", 2) == 0
-			   || strncmp (locale, "ko", 2) == 0
-			   || strncmp (locale, "zh", 2) == 0));
+		      (!cjknarrow && mbc_max > 1 && charset[0] != 'U');
+      if (cjksingle)
+	loc->cjk_lang = -1;	/* Disable CJK dual-width */
 #ifdef __HAVE_LOCALE_INFO__
       ret = __ctype_load_locale (loc, locale, (void *) l_wctomb, charset,
 				 mbc_max);
