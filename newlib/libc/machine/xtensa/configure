@@ -720,15 +720,6 @@ with_cross_bootstrap
 with_windows_headers
 with_windows_libs
 enable_multilib
-enable_target_optspace
-enable_malloc_debugging
-enable_newlib_multithread
-enable_newlib_iconv
-enable_newlib_elix_level
-enable_newlib_io_float
-enable_newlib_supplied_syscalls
-enable_dependency_tracking
-enable_maintainer_mode
 '
       ac_precious_vars='build_alias
 host_alias
