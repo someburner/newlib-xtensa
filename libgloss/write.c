@@ -14,7 +14,7 @@
  */
 #include "glue.h"
 
-extern int  _EXFUN (outbyte, (char x));
+extern int  outbyte (char x);
 
 /*
  * write -- write bytes to the serial port. Ignore fd, since
@@ -25,9 +25,8 @@ extern int  _EXFUN (outbyte, (char x));
 #ifndef REENTRANT_SYSCALLS_PROVIDED
 
 int
-_DEFUN (write, (fd, buf, nbytes),
-       int fd _AND
-       char *buf _AND
+write (int fd,
+       char *buf,
        int nbytes)
 {
   int i;

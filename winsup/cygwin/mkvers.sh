@@ -34,7 +34,7 @@ done
   echo "**** Couldn't open file '$incfile'.  Aborting."
 }
 
-function parse_preproc_flags() {
+parse_preproc_flags() {
   # Since we're manually specifying the preprocessor, pass the default flags
   # normally defined.
   ccflags="--preprocessor=$1 --preprocessor-arg=-E \
@@ -58,7 +58,7 @@ parse_preproc_flags $CC
 #
 # Load the current date so we can work on individual fields
 #
-set -$- $(date +"%m %d %Y %H:%M")
+set -$- $(date -u +"%m %d %Y %H:%M")
 m=$1 d=$2 y=$3 hhmm=$4
 #
 # Set date into YYYY-MM-DD HH:MM:SS format
@@ -140,7 +140,8 @@ done | tee /tmp/mkvers.$$ 1>&9
 trap "rm -f /tmp/mkvers.$$" 0 1 2 15
 
 if [ -n "$snapshotdate" ]; then
-  usedate="$(echo $snapshotdate | sed 's/-\\(..:..[^-]*\\).*$/ \1SNP/')"
+  usedate="$(echo $snapshotdate \
+	     | sed -e 's/\(....\)\(..\)\(..\)-\(..:..\).*$/\1-\2-\3 \4SNP/')"
 else
   usedate="$builddate"
 fi

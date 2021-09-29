@@ -39,6 +39,7 @@
 
 #define _WIN32_WINNT 0x0a00
 #include <windows.h>
+#include <winternl.h>
 #include <imagehlp.h>
 #include <psapi.h>
 
@@ -55,6 +56,7 @@ struct option longopts[] =
 const char *opts = "dhruvV";
 
 static int process_file (const wchar_t *);
+static void *drive_map;
 
 static int
 error (const char *fmt, ...)
@@ -152,6 +154,32 @@ get_module_filename (HANDLE hp, HMODULE hm)
   return buf;
 }
 
+static BOOL
+GetFileNameFromHandle(HANDLE hFile, WCHAR pszFilename[MAX_PATH+1])
+{
+  BOOL result = FALSE;
+  ULONG len = 0;
+  OBJECT_NAME_INFORMATION *ntfn = (OBJECT_NAME_INFORMATION *) alloca (65536);
+  NTSTATUS status = NtQueryObject (hFile, ObjectNameInformation,
+                                   ntfn, 65536, &len);
+  if (NT_SUCCESS (status))
+    {
+      PWCHAR win32path = ntfn->Name.Buffer;
+      win32path[ntfn->Name.Length / sizeof (WCHAR)] = L'\0';
+
+      /* NtQueryObject returns a native NT path.  (Try to) convert to Win32. */
+      if (!drive_map)
+	 drive_map = (void *) cygwin_internal (CW_ALLOC_DRIVE_MAP);
+      if (drive_map)
+        win32path = (PWCHAR) cygwin_internal (CW_MAP_DRIVE_MAP, drive_map,
+                                              win32path);
+      pszFilename[0] = L'\0';
+      wcsncat (pszFilename, win32path, MAX_PATH);
+      result = TRUE;
+    }
+  return result;
+}
+
 static wchar_t *
 load_dll (const wchar_t *fn)
 {
@@ -215,6 +243,7 @@ start_process (const wchar_t *fn, bool& isdll)
 struct dlls
   {
     LPVOID lpBaseOfDll;
+    HANDLE hFile;
     struct dlls *next;
   };
 
@@ -256,7 +285,17 @@ print_dlls (dlls *dll, const wchar_t *dllfn, const wchar_t *process_fn)
       char *fn;
       wchar_t *fullpath = get_module_filename (hProcess, (HMODULE) dll->lpBaseOfDll);
       if (!fullpath)
-	fn = strdup ("???");
+	{
+	  // if no path found yet, try getting it from an open handle to the DLL
+	  wchar_t dllname[MAX_PATH+1];
+	  if (GetFileNameFromHandle (dll->hFile, dllname))
+	    {
+	      fn = tocyg (dllname);
+	      saw_file (basename (fn));
+	    }
+	  else
+	    fn = strdup ("???");
+	}
       else if (dllfn && wcscmp (fullpath, dllfn) == 0)
 	{
 	  free (fullpath);
@@ -302,6 +341,9 @@ report (const char *in_fn, bool multiple)
   dlls dll_list = {};
   dlls *dll_last = &dll_list;
   const wchar_t *process_fn = NULL;
+
+  int res = 0;
+
   while (1)
     {
       bool exitnow = false;
@@ -337,6 +379,7 @@ report (const char *in_fn, bool multiple)
 	case LOAD_DLL_DEBUG_EVENT:
 	  dll_last->next = (dlls *) malloc (sizeof (dlls));
 	  dll_last->next->lpBaseOfDll = ev.u.LoadDll.lpBaseOfDll;
+	  dll_last->next->hFile = ev.u.LoadDll.hFile;
 	  dll_last->next->next = NULL;
 	  dll_last = dll_last->next;
 	  break;
@@ -356,6 +399,11 @@ report (const char *in_fn, bool multiple)
 		TerminateProcess (hProcess, 0);
 	      break;
 	    }
+	  if (ev.u.Exception.ExceptionRecord.ExceptionFlags &
+	      EXCEPTION_NONCONTINUABLE) {
+	    res = 1;
+	    goto print_and_exit;
+	  }
 	  break;
 	case EXIT_PROCESS_DEBUG_EVENT:
 print_and_exit:
@@ -374,7 +422,7 @@ print_and_exit:
 	break;
     }
 
-  return 0;
+  return res;
 }
 
 int
@@ -415,6 +463,8 @@ main (int argc, char **argv)
   while ((fn = *argv++))
     if (report (fn, multiple))
       ret = 1;
+  if (drive_map)
+    cygwin_internal (CW_FREE_DRIVE_MAP, drive_map);
   exit (ret);
 }
 

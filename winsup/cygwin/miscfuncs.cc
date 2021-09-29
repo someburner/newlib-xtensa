@@ -10,168 +10,12 @@ details. */
 #include "miscfuncs.h"
 #include <ntsecapi.h>
 #include <sys/uio.h>
-#include <assert.h>
-#include <alloca.h>
-#include <limits.h>
 #include <sys/param.h>
-#include <sys/random.h>
-#include <wchar.h>
-#include "cygtls.h"
 #include "ntdll.h"
 #include "path.h"
 #include "fhandler.h"
-#include "dtable.h"
-#include "cygheap.h"
-#include "pinfo.h"
 #include "exception.h"
-#include "sigproc.h"
-
-long tls_ix = -1;
-
-const unsigned char case_folded_lower[] = {
-   0,   1,   2,   3,   4,   5,   6,   7,   8,   9,  10,  11,  12,  13,  14,  15,
-  16,  17,  18,  19,  20,  21,  22,  23,  24,  25,  26,  27,  28,  29,  30,  31,
-  32, '!', '"', '#', '$', '%', '&',  39, '(', ')', '*', '+', ',', '-', '.', '/',
- '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?',
- '@', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o',
- 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '[',  92, ']', '^', '_',
- '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o',
- 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~', 127,
- 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143,
- 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159,
- 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175,
- 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191,
- 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207,
- 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223,
- 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239,
- 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255
-};
-
-const unsigned char case_folded_upper[] = {
-   0,   1,   2,   3,   4,   5,   6,   7,   8,   9,  10,  11,  12,  13,  14,  15,
-  16,  17,  18,  19,  20,  21,  22,  23,  24,  25,  26,  27,  28,  29,  30,  31,
-  32, '!', '"', '#', '$', '%', '&',  39, '(', ')', '*', '+', ',', '-', '.', '/',
- '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?',
- '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O',
- 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[',  92, ']', '^', '_',
- '`', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O',
- 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '{', '|', '}', '~', 127,
- 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143,
- 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159,
- 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175,
- 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191,
- 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207,
- 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223,
- 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239,
- 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255
-};
-
-const char isalpha_array[] = {
-   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-   0,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,
-0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,   0,   0,   0,   0,   0,
-   0,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,
-0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,   0,   0,   0,   0,   0,
-   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0
-};
-
-extern "C" int __stdcall
-cygwin_wcscasecmp (const wchar_t *ws, const wchar_t *wt)
-{
-  UNICODE_STRING us, ut;
-
-  RtlInitUnicodeString (&us, ws);
-  RtlInitUnicodeString (&ut, wt);
-  return RtlCompareUnicodeString (&us, &ut, TRUE);
-}
-
-extern "C" int __stdcall
-cygwin_wcsncasecmp (const wchar_t  *ws, const wchar_t *wt, size_t n)
-{
-  UNICODE_STRING us, ut;
-  size_t ls = 0, lt = 0;
-
-  while (ws[ls] && ls < n)
-    ++ls;
-  RtlInitCountedUnicodeString (&us, ws, ls * sizeof (WCHAR));
-  while (wt[lt] && lt < n)
-    ++lt;
-  RtlInitCountedUnicodeString (&ut, wt, lt * sizeof (WCHAR));
-  return RtlCompareUnicodeString (&us, &ut, TRUE);
-}
-
-extern "C" int __stdcall
-cygwin_strcasecmp (const char *cs, const char *ct)
-{
-  UNICODE_STRING us, ut;
-  ULONG len;
-
-  len = (strlen (cs) + 1) * sizeof (WCHAR);
-  RtlInitEmptyUnicodeString (&us, (PWCHAR) alloca (len), len);
-  us.Length = sys_mbstowcs (us.Buffer, us.MaximumLength, cs) * sizeof (WCHAR);
-  len = (strlen (ct) + 1) * sizeof (WCHAR);
-  RtlInitEmptyUnicodeString (&ut, (PWCHAR) alloca (len), len);
-  ut.Length = sys_mbstowcs (ut.Buffer, ut.MaximumLength, ct) * sizeof (WCHAR);
-  return RtlCompareUnicodeString (&us, &ut, TRUE);
-}
-
-extern "C" int __stdcall
-cygwin_strncasecmp (const char *cs, const char *ct, size_t n)
-{
-  UNICODE_STRING us, ut;
-  ULONG len;
-  size_t ls = 0, lt = 0;
-
-  while (cs[ls] && ls < n)
-    ++ls;
-  len = (ls + 1) * sizeof (WCHAR);
-  RtlInitEmptyUnicodeString (&us, (PWCHAR) alloca (len), len);
-  us.Length = sys_mbstowcs (us.Buffer, ls + 1, cs, ls) * sizeof (WCHAR);
-  while (ct[lt] && lt < n)
-    ++lt;
-  len = (lt + 1) * sizeof (WCHAR);
-  RtlInitEmptyUnicodeString (&ut, (PWCHAR) alloca (len), len);
-  ut.Length = sys_mbstowcs (ut.Buffer, lt + 1, ct, lt)  * sizeof (WCHAR);
-  return RtlCompareUnicodeString (&us, &ut, TRUE);
-}
-
-extern "C" char *
-strlwr (char *string)
-{
-  UNICODE_STRING us;
-  size_t len = (strlen (string) + 1) * sizeof (WCHAR);
-
-  us.MaximumLength = len; us.Buffer = (PWCHAR) alloca (len);
-  us.Length = sys_mbstowcs (us.Buffer, len, string) * sizeof (WCHAR)
-	      - sizeof (WCHAR);
-  RtlDowncaseUnicodeString (&us, &us, FALSE);
-  sys_wcstombs (string, len / sizeof (WCHAR), us.Buffer);
-  return string;
-}
-
-extern "C" char *
-strupr (char *string)
-{
-  UNICODE_STRING us;
-  size_t len = (strlen (string) + 1) * sizeof (WCHAR);
-
-  us.MaximumLength = len; us.Buffer = (PWCHAR) alloca (len);
-  us.Length = sys_mbstowcs (us.Buffer, len, string) * sizeof (WCHAR)
-	      - sizeof (WCHAR);
-  RtlUpcaseUnicodeString (&us, &us, FALSE);
-  sys_wcstombs (string, len / sizeof (WCHAR), us.Buffer);
-  return string;
-}
+#include "tls_pbuf.h"
 
 int __reg2
 check_invalid_virtual_addr (const void *s, unsigned sz)
@@ -206,7 +50,7 @@ check_iovec (const struct iovec *iov, int iovcnt, bool forwrite)
 
       size_t tot = 0;
 
-      while (iovcnt != 0)
+      while (iovcnt > 0)
 	{
 	  if (iov->iov_len > SSIZE_MAX || (tot += iov->iov_len) > SSIZE_MAX)
 	    {
@@ -226,69 +70,14 @@ check_iovec (const struct iovec *iov, int iovcnt, bool forwrite)
 	  iovcnt--;
 	}
 
-      assert (tot <= SSIZE_MAX);
+      if (tot <= SSIZE_MAX)
+	return (ssize_t) tot;
 
-      return (ssize_t) tot;
+      set_errno (EINVAL);
     }
   __except (EFAULT)
   __endtry
   return -1;
-}
-
-extern "C" int
-getentropy (void *ptr, size_t len)
-{
-  /* Per BSD man page: The maximum buffer size permitted is 256 bytes.
-     If buflen exceeds this, an error of EIO will be indicated. */
-  if (len > 256)
-    {
-      debug_printf ("len (%U) > 256", len);
-      set_errno (EIO);
-      return -1;
-    }
-  __try
-    {
-      if (!RtlGenRandom (ptr, len))
-	{
-	  debug_printf ("RtlGenRandom() = FALSE");
-	  set_errno (EIO);
-	  return -1;
-	}
-    }
-  __except (EFAULT)
-    {
-      return -1;
-    }
-  __endtry
-  return 0;
-}
-
-extern "C" ssize_t
-getrandom (void *ptr, size_t len, unsigned int flags)
-{
-  if (flags & ~(GRND_NONBLOCK | GRND_RANDOM))
-    {
-      debug_printf ("invalid flags: %y", flags);
-      set_errno (EINVAL);
-      return -1;
-    }
-  /* Max. bytes returned by Linux call. */
-  len = MAX (len, (flags & GRND_RANDOM) ? 512 : 33554431);
-  __try
-    {
-      if (!RtlGenRandom (ptr, len))
-	{
-	  debug_printf ("RtlGenRandom() = FALSE");
-	  set_errno (EIO);
-	  return -1;
-	}
-    }
-  __except (EFAULT)
-    {
-      return -1;
-    }
-  __endtry
-  return len;
 }
 
 /* Try hard to schedule another thread.  
@@ -297,17 +86,18 @@ getrandom (void *ptr, size_t len, unsigned int flags)
 void
 yield ()
 {
-  int prio = GetThreadPriority (GetCurrentThread ());
-  SetThreadPriority (GetCurrentThread (), THREAD_PRIORITY_IDLE);
-  /* MSDN implies that SleepEx will force scheduling of other threads.
+  /* MSDN implies that Sleep will force scheduling of other threads.
      Unlike SwitchToThread() the documentation does not mention other
      cpus so, presumably (hah!), this + using a lower priority will
      stall this thread temporarily and cause another to run.
      (stackoverflow and others seem to confirm that setting this thread
      to a lower priority and calling Sleep with a 0 paramenter will
-     have this desired effect)  */
+     have this desired effect)
+
+     CV 2017-03-08: Drop lowering the priority.  It leads to potential
+		    starvation and it should not be necessary anymore
+		    since Server 2003.  See the MSDN Sleep man page. */
   Sleep (0L);
-  SetThreadPriority (GetCurrentThread (), prio);
 }
 
 /* Get a default value for the nice factor.  When changing these values,
@@ -518,54 +308,6 @@ NT_readline::gets ()
     }
 }
 
-/* backslashify: Convert all forward slashes in src path to back slashes
-   in dst path.  Add a trailing slash to dst when trailing_slash_p arg
-   is set to 1. */
-
-void
-backslashify (const char *src, char *dst, bool trailing_slash_p)
-{
-  const char *start = src;
-
-  while (*src)
-    {
-      if (*src == '/')
-	*dst++ = '\\';
-      else
-	*dst++ = *src;
-      ++src;
-    }
-  if (trailing_slash_p
-      && src > start
-      && !isdirsep (src[-1]))
-    *dst++ = '\\';
-  *dst++ = 0;
-}
-
-/* slashify: Convert all back slashes in src path to forward slashes
-   in dst path.  Add a trailing slash to dst when trailing_slash_p arg
-   is set to 1. */
-
-void
-slashify (const char *src, char *dst, bool trailing_slash_p)
-{
-  const char *start = src;
-
-  while (*src)
-    {
-      if (*src == '\\')
-	*dst++ = '/';
-      else
-	*dst++ = *src;
-      ++src;
-    }
-  if (trailing_slash_p
-      && src > start
-      && !isdirsep (src[-1]))
-    *dst++ = '/';
-  *dst++ = 0;
-}
-
 /* Return an address from the import jmp table of main program.  */
 void * __reg1
 __import_address (void *imp)
@@ -658,7 +400,7 @@ pthread_wrapper (PVOID arg)
   /* Initialize new _cygtls. */
   _my_tls.init_thread (wrapper_arg.stackbase - CYGTLS_PADSIZE,
 		       (DWORD (*)(void*, void*)) wrapper_arg.func);
-#ifndef __x86_64__
+#ifdef __i386__
   /* Copy exception list over to new stack.  I'm not quite sure how the
      exception list is extended by Windows itself.  What's clear is that it
      always grows downwards and that it starts right at the stackbase.
@@ -809,6 +551,8 @@ public:
     /* If we got an address, remember it for the next allocation attempt. */
     if (real_stackaddr)
       current = (UINT_PTR) real_stackaddr;
+    else
+      set_errno (EAGAIN);
     return real_stackaddr;
   }
 };
@@ -980,7 +724,7 @@ err:
    See FreeBSD src/lib/libc/amd64/string/memset.S
    and FreeBSD src/lib/libc/amd64/string/bcopy.S */
 
-asm volatile ("								\n\
+asm ("								\n\
 /*									\n\
  * Written by J.T. Conklin <jtc@NetBSD.org>.				\n\
  * Public domain.							\n\
@@ -1047,7 +791,7 @@ L1:     rep								\n\
 	.seh_endproc							\n\
 ");
 
-asm volatile ("								\n\
+asm ("								\n\
 /*-									\n\
  * Copyright (c) 1990 The Regents of the University of California.	\n\
  * All rights reserved.							\n\
@@ -1081,16 +825,8 @@ asm volatile ("								\n\
  * DAMAGE.								\n\
  */									\n\
 									\n\
-	.globl  memmove							\n\
-	.seh_proc memmove						\n\
-memmove:								\n\
-	.seh_endprologue						\n\
-	nop			/* FALLTHRU */				\n\
-	.seh_endproc							\n\
-									\n\
-	.globl  memcpy							\n\
-	.seh_proc memcpy						\n\
-memcpy:									\n\
+	.seh_proc _memcpy						\n\
+_memcpy:								\n\
 	movq	%rsi,8(%rsp)						\n\
 	movq	%rdi,16(%rsp)						\n\
 	.seh_endprologue						\n\
@@ -1098,7 +834,6 @@ memcpy:									\n\
 	movq	%rdx,%rsi						\n\
 	movq	%r8,%rdx						\n\
 									\n\
-	movq	%rdi,%rax	/* return dst */			\n\
 	movq    %rdx,%rcx						\n\
 	movq    %rdi,%r8						\n\
 	subq    %rsi,%r8						\n\
@@ -1130,14 +865,39 @@ memcpy:									\n\
 	movq	16(%rsp),%rdi						\n\
 	ret								\n\
 	.seh_endproc							\n\
-");
-
-asm volatile ("								\n\
+									\n\
+	.globl  memmove							\n\
+	.seh_proc memmove						\n\
+memmove:								\n\
+	.seh_endprologue						\n\
+	movq	%rcx,%rax	/* return dst */			\n\
+	jmp	_memcpy							\n\
+	.seh_endproc							\n\
+									\n\
+	.globl  memcpy							\n\
+	.seh_proc memcpy						\n\
+memcpy:									\n\
+	.seh_endprologue						\n\
+	movq	%rcx,%rax	/* return dst */			\n\
+	jmp	_memcpy							\n\
+	.seh_endproc							\n\
+									\n\
+	.globl  mempcpy							\n\
+	.seh_proc mempcpy						\n\
+mempcpy:								\n\
+	.seh_endprologue						\n\
+	movq	%rcx,%rax	/* return dst  */			\n\
+	addq	%r8,%rax	/*         + n */			\n\
+	jmp	_memcpy							\n\
+	.seh_endproc							\n\
+									\n\
 	.globl  wmemmove						\n\
 	.seh_proc wmemmove						\n\
 wmemmove:								\n\
 	.seh_endprologue						\n\
-	nop			/* FALLTHRU */				\n\
+	shlq	$1,%r8		/* cnt * sizeof (wchar_t) */		\n\
+	movq	%rcx,%rax	/* return dst */			\n\
+	jmp	_memcpy							\n\
 	.seh_endproc							\n\
 									\n\
 	.globl  wmemcpy							\n\
@@ -1145,9 +905,21 @@ wmemmove:								\n\
 wmemcpy:								\n\
 	.seh_endprologue						\n\
 	shlq	$1,%r8		/* cnt * sizeof (wchar_t) */		\n\
-	jmp	memcpy							\n\
+	movq	%rcx,%rax	/* return dst */			\n\
+	jmp	_memcpy							\n\
+	.seh_endproc							\n\
+									\n\
+	.globl  wmempcpy						\n\
+	.seh_proc wmempcpy						\n\
+wmempcpy:								\n\
+	.seh_endprologue						\n\
+	shlq	$1,%r8		/* cnt * sizeof (wchar_t) */		\n\
+	movq	%rcx,%rax	/* return dst */			\n\
+	addq	%r8,%rax	/*         + n */			\n\
+	jmp	_memcpy							\n\
 	.seh_endproc							\n\
 ");
+
 #endif
 
 /* Signal the thread name to any attached debugger
@@ -1187,4 +959,68 @@ SetThreadName(DWORD dwThreadID, const char* threadName)
     }
   __except (NO_ERROR)
   __endtry
+}
+
+#define add_size(p,s) ((p) = ((__typeof__(p))((PBYTE)(p)+(s))))
+
+static WORD num_cpu_per_group = 0;
+static WORD group_count = 0;
+
+WORD
+__get_cpus_per_group (void)
+{
+  tmp_pathbuf tp;
+
+  if (num_cpu_per_group)
+    return num_cpu_per_group;
+
+  num_cpu_per_group = 64;
+  group_count = 1;
+
+  PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX lpi =
+            (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX) tp.c_get ();
+  DWORD lpi_size = NT_MAX_PATH;
+
+  /* Fake a SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX group info block on Vista
+     systems.  This may be over the top but if the below code just using
+     ActiveProcessorCount turns out to be insufficient, we can build on that. */
+  if (!wincap.has_processor_groups ()
+      || !GetLogicalProcessorInformationEx (RelationGroup, lpi, &lpi_size))
+    {
+      lpi_size = sizeof *lpi;
+      lpi->Relationship = RelationGroup;
+      lpi->Size = lpi_size;
+      lpi->Group.MaximumGroupCount = 1;
+      lpi->Group.ActiveGroupCount = 1;
+      lpi->Group.GroupInfo[0].MaximumProcessorCount = wincap.cpu_count ();
+      lpi->Group.GroupInfo[0].ActiveProcessorCount
+        = __builtin_popcountl (wincap.cpu_mask ());
+      lpi->Group.GroupInfo[0].ActiveProcessorMask = wincap.cpu_mask ();
+    }
+
+  PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX plpi = lpi;
+  for (DWORD size = lpi_size; size > 0;
+       size -= plpi->Size, add_size (plpi, plpi->Size))
+    if (plpi->Relationship == RelationGroup)
+      {
+        /* There are systems with a MaximumProcessorCount not reflecting the
+	   actually available CPUs.  The ActiveProcessorCount is correct
+	   though.  So we just use ActiveProcessorCount for now, hoping for
+	   the best. */
+        num_cpu_per_group = plpi->Group.GroupInfo[0].ActiveProcessorCount;
+
+	/* Follow that lead to get the group count. */
+	group_count = plpi->Group.ActiveGroupCount;
+        break;
+      }
+
+  return num_cpu_per_group;
+}
+
+WORD
+__get_group_count (void)
+{
+  if (group_count == 0)
+    (void) __get_cpus_per_group (); // caller should have called this first
+  return group_count;
 }

@@ -111,26 +111,6 @@ fhandler_base::set_readahead_valid (int val, int ch)
 }
 
 int
-fhandler_base::eat_readahead (int n)
-{
-  int oralen = ralen;
-  if (n < 0)
-    n = ralen;
-  if (n > 0 && ralen)
-    {
-      if ((int) (ralen -= n) < 0)
-	ralen = 0;
-
-      if (raixget >= ralen)
-	raixget = raixput = ralen = 0;
-      else if (raixput > ralen)
-	raixput = ralen;
-    }
-
-  return oralen;
-}
-
-int
 fhandler_base::get_readahead_into_buffer (char *buf, size_t buflen)
 {
   int ch;
@@ -157,6 +137,20 @@ fhandler_base::set_name (path_conv &in_pc)
 
 char *fhandler_base::get_proc_fd_name (char *buf)
 {
+  IO_STATUS_BLOCK io;
+  FILE_STANDARD_INFORMATION fsi;
+
+  /* If the file had been opened with O_TMPFILE, don't expose the filename. */
+  if ((get_flags () & O_TMPFILE)
+      || (get_device () == FH_FS
+	  && NT_SUCCESS (NtQueryInformationFile (get_handle (), &io,
+						 &fsi, sizeof fsi,
+						 FileStandardInformation))
+	  && fsi.DeletePending))
+    {
+      stpcpy (stpcpy (buf, get_name ()), " (deleted)");
+      return buf;
+    }
   if (get_name ())
     return strcpy (buf, get_name ());
   if (dev ().name ())
@@ -467,7 +461,7 @@ fhandler_base::open_with_arch (int flags, mode_t mode)
     }
   else if (archetype)
     {
-      if (!archetype->get_io_handle ())
+      if (!archetype->get_handle ())
 	{
 	  copyto (archetype);
 	  archetype_usecount (1);
@@ -528,7 +522,7 @@ fhandler_base::open_null (int flags)
       __seterrno_from_nt_status (status);
       goto done;
     }
-  set_io_handle (fh);
+  set_handle (fh);
   set_flags (flags, pc.binmode ());
   res = 1;
   set_open_status ();
@@ -553,9 +547,24 @@ fhandler_base::open (int flags, mode_t mode)
   PFILE_FULL_EA_INFORMATION p = NULL;
   ULONG plen = 0;
 
-  syscall_printf ("(%S, %y)", pc.get_nt_native_path (), flags);
+  syscall_printf ("(%S, %y)%s", pc.get_nt_native_path (), flags,
+				get_handle () ? " by handle" : "");
 
-  pc.get_object_attr (attr, *sec_none_cloexec (flags));
+  if (flags & O_PATH)
+    query_open (query_read_attributes);
+
+  /* Allow to reopen from handle.  This is utilized by
+     open ("/proc/PID/fd/DESCRIPTOR", ...); */
+  if (get_handle ())
+    {
+      pc.init_reopen_attr (attr, get_handle ());
+      if (!(flags & O_CLOEXEC))
+	attr.Attributes |= OBJ_INHERIT;
+      if (pc.has_buggy_reopen ())
+	debug_printf ("Reopen by handle requested but FS doesn't support it");
+    }
+  else
+    pc.get_object_attr (attr, *sec_none_cloexec (flags));
 
   options = FILE_OPEN_FOR_BACKUP_INTENT;
   switch (query_open ())
@@ -602,17 +611,32 @@ fhandler_base::open (int flags, mode_t mode)
 
   /* Don't use the FILE_OVERWRITE{_IF} flags here.  See below for an
      explanation, why that's not such a good idea. */
-  if ((flags & O_EXCL) && (flags & O_CREAT))
+  if (((flags & O_EXCL) && (flags & O_CREAT)) || (flags & O_TMPFILE))
     create_disposition = FILE_CREATE;
   else
     create_disposition = (flags & O_CREAT) ? FILE_OPEN_IF : FILE_OPEN;
 
   if (get_device () == FH_FS)
     {
-      /* Add the reparse point flag to native symlinks, otherwise we open the
-	 target, not the symlink.  This would break lstat. */
-      if (pc.is_rep_symlink ())
+      /* Add the reparse point flag to known repares points, otherwise we
+	 open the target, not the reparse point.  This would break lstat. */
+      if (pc.is_known_reparse_point ())
 	options |= FILE_OPEN_REPARSE_POINT;
+
+      /* O_TMPFILE files are created with delete-on-close semantics, as well
+	 as with FILE_ATTRIBUTE_TEMPORARY.  The latter speeds up file access,
+	 because the OS tries to keep the file in memory as much as possible.
+	 In conjunction with FILE_DELETE_ON_CLOSE, ideally the OS never has
+	 to write to the disk at all.
+	 Note that O_TMPFILE_FILE_ATTRS also sets the DOS HIDDEN attribute
+	 to help telling Cygwin O_TMPFILE files apart from other files
+	 accidentally setting FILE_ATTRIBUTE_TEMPORARY. */
+      if (flags & O_TMPFILE)
+	{
+	  access |= DELETE;
+	  file_attributes |= O_TMPFILE_FILE_ATTRS;
+	  options |= FILE_DELETE_ON_CLOSE;
+	}
 
       if (pc.fs_is_nfs ())
 	{
@@ -629,15 +653,7 @@ fhandler_base::open (int flags, mode_t mode)
 	    }
 	}
 
-      /* Trying to overwrite an already existing file with FILE_ATTRIBUTE_HIDDEN
-	 and/or FILE_ATTRIBUTE_SYSTEM attribute set, NtCreateFile fails with
-	 STATUS_ACCESS_DENIED.  Per MSDN you have to create the file with the
-	 same attributes as already specified for the file. */
-      if (create_disposition == FILE_CREATE
-	  && has_attribute (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM))
-	file_attributes |= pc.file_attributes ();
-
-      if (flags & O_CREAT)
+      if (flags & (O_CREAT | O_TMPFILE))
 	{
 	  file_attributes |= FILE_ATTRIBUTE_NORMAL;
 
@@ -680,6 +696,23 @@ fhandler_base::open (int flags, mode_t mode)
 
   status = NtCreateFile (&fh, access, &attr, &io, NULL, file_attributes, shared,
 			 create_disposition, options, p, plen);
+  /* Pre-W10, we can't reopen a file by handle with delete disposition
+     set, so we have to lie our ass off. */
+  if (get_handle () && status == STATUS_DELETE_PENDING)
+    {
+      BOOL ret = DuplicateHandle (GetCurrentProcess (), get_handle (),
+				  GetCurrentProcess (), &fh,
+				  access, !(flags & O_CLOEXEC), 0);
+      if (!ret)
+	ret = DuplicateHandle (GetCurrentProcess (), get_handle (),
+			       GetCurrentProcess (), &fh,
+			       0, !(flags & O_CLOEXEC),
+			       DUPLICATE_SAME_ACCESS);
+      if (!ret)
+	debug_printf ("DuplicateHandle after STATUS_DELETE_PENDING, %E");
+      else
+	status = STATUS_SUCCESS;
+    }
   if (!NT_SUCCESS (status))
     {
       /* Trying to create a directory should return EISDIR, not ENOENT. */
@@ -742,7 +775,7 @@ fhandler_base::open (int flags, mode_t mode)
 	}
     }
 
-  set_io_handle (fh);
+  set_handle (fh);
   set_flags (flags, pc.binmode ());
 
   res = 1;
@@ -756,6 +789,13 @@ done:
   syscall_printf ("%d = fhandler_base::open(%S, %y)",
 		  res, pc.get_nt_native_path (), flags);
   return res;
+}
+
+fhandler_base *
+fhandler_base::fd_reopen (int, mode_t)
+{
+  /* This is implemented in fhandler_process only. */
+  return NULL;
 }
 
 void
@@ -833,7 +873,7 @@ out:
 ssize_t __stdcall
 fhandler_base::write (const void *ptr, size_t len)
 {
-  int res;
+  ssize_t res;
 
   if (did_lseek ())
     {
@@ -1105,14 +1145,14 @@ fhandler_base::lseek (off_t offset, int whence)
 }
 
 ssize_t __reg3
-fhandler_base::pread (void *, size_t, off_t)
+fhandler_base::pread (void *, size_t, off_t, void *)
 {
   set_errno (ESPIPE);
   return -1;
 }
 
 ssize_t __reg3
-fhandler_base::pwrite (void *, size_t, off_t)
+fhandler_base::pwrite (void *, size_t, off_t, void *)
 {
   set_errno (ESPIPE);
   return -1;
@@ -1258,7 +1298,7 @@ fhandler_base_overlapped::close ()
      /* Cancelling seems to be necessary for cases where a reader is
 	 still executing when a signal handler performs a close.  */
       if (!writer)
-	CancelIo (get_io_handle ());
+	CancelIo (get_handle ());
       destroy_overlapped ();
       res = fhandler_base::close ();
     }
@@ -1342,7 +1382,7 @@ fhandler_base::fstatvfs (struct statvfs *sfs)
 int
 fhandler_base::init (HANDLE f, DWORD a, mode_t bin)
 {
-  set_io_handle (f);
+  set_handle (f);
   access = a;
   a &= GENERIC_READ | GENERIC_WRITE;
   int flags = 0;
@@ -1377,7 +1417,7 @@ fhandler_base::dup (fhandler_base *child, int)
 	}
 
       VerifyHandle (nh);
-      child->set_io_handle (nh);
+      child->set_handle (nh);
     }
   return 0;
 }
@@ -1549,6 +1589,15 @@ fhandler_dev_null::fhandler_dev_null () :
 {
 }
 
+ssize_t __stdcall
+fhandler_dev_null::write (const void *ptr, size_t len)
+{
+  /* Shortcut.  This also fixes a problem with the NUL device on 64 bit:
+     If you write > 4 GB in a single attempt, the bytes written returned
+     from by is numBytes & 0xffffffff. */
+  return len;
+}
+
 void
 fhandler_base::set_no_inheritance (HANDLE &h, bool not_inheriting)
 {
@@ -1566,7 +1615,7 @@ fhandler_base::fork_fixup (HANDLE parent, HANDLE &h, const char *name)
 {
   HANDLE oh = h;
   bool res = false;
-  if (/* !is_socket () && */ !close_on_exec ())
+  if (!close_on_exec ())
     debug_printf ("handle %p already opened", h);
   else if (!DuplicateHandle (parent, h, GetCurrentProcess (), &h,
 			     0, !close_on_exec (), DUPLICATE_SAME_ACCESS))
@@ -1782,8 +1831,7 @@ fhandler_base::fadvise (off_t offset, off_t length, int advice)
 int
 fhandler_base::ftruncate (off_t length, bool allow_truncate)
 {
-  set_errno (EINVAL);
-  return -1;
+  return EINVAL;
 }
 
 int
@@ -1875,6 +1923,7 @@ fhandler_base::fpathconf (int v)
       set_errno (EINVAL);
       break;
     case _PC_ASYNC_IO:
+      return 1;
     case _PC_PRIO_IO:
       break;
     case _PC_SYNC_IO:
@@ -2155,7 +2204,7 @@ fhandler_base_overlapped::raw_write (const void *ptr, size_t len)
 	    case overlapped_success:
 	      ptr = ((char *) ptr) + chunk;
 	      nbytes += nbytes_now;
-	      /* fall through intentionally */
+	      break;
 	    case overlapped_error:
 	      len = 0;		/* terminate loop */
 	    case overlapped_unknown:

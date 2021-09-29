@@ -23,8 +23,7 @@
 #ifndef REENTRANT_SYSCALLS_PROVIDED
 
 int
-_DEFUN (stat, (path, buf),
-       const char *path _AND
+stat (const char *path,
        struct stat *buf)
 {
   errno = EIO;

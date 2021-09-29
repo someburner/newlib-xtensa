@@ -112,8 +112,7 @@ MATHOBJS_IN_LIBC = \
 	$(lpfx)sf_modf.$(oext) $(lpfx)s_scalbn.$(oext) \
 	$(lpfx)sf_scalbn.$(oext) \
 	$(lpfx)s_finite.$(oext) $(lpfx)sf_finite.$(oext) \
-	$(lpfx)s_copysign.$(oext) $(lpfx)sf_copysign.$(oext) \
-	$(lpfx)s_infconst.$(oext)
+	$(lpfx)s_copysign.$(oext) $(lpfx)sf_copysign.$(oext)
 
 LIBC_OBJECTLISTS = \
 	$(POSIX_OBJECTLIST) \
@@ -335,6 +334,10 @@ endif
 	  for i in $(srcdir)/libc/include/rpc/*.h; do \
 	   $(INSTALL_DATA) $$i $(DESTDIR)$(tooldir)/include/rpc/`basename $$i`; \
 	  done; \
+	  $(mkinstalldirs) $(DESTDIR)$(tooldir)/include/ssp; \
+	  for i in $(srcdir)/libc/include/ssp/*.h; do \
+	   $(INSTALL_DATA) $$i $(DESTDIR)$(tooldir)/include/ssp/`basename $$i`; \
+	  done; \
 	  $(mkinstalldirs) $(DESTDIR)$(tooldir)/include/sys; \
 	  for i in $(srcdir)/libc/include/sys/*.h; do \
 	   $(INSTALL_DATA) $$i $(DESTDIR)$(tooldir)/include/sys/`basename $$i`; \
@@ -399,6 +402,15 @@ endif
 	    else true; fi ; \
 	  done ; \
 	else true; fi
+
+# Generate Unicode data tables for libc/string/wcwidth and libc/ctype/??w*
+unidata:
+	cd $(srcdir)/libc/string; ./mkunidata
+	cd $(srcdir)/libc/ctype; ./mkunidata
+
+unidate-download:
+	cd $(srcdir)/libc/string; ./mkunidata -u
+	cd $(srcdir)/libc/ctype; ./mkunidata -u
 
 # Force makedoc to be built before building info files.
 info-recursive: doc/makedoc

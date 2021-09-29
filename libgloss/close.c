@@ -21,8 +21,7 @@
 #ifndef REENTRANT_SYSCALLS_PROVIDED
 
 int
-_DEFUN (close ,(fd),
-       int fd)
+close  (int fd)
 {
   return (0);
 }

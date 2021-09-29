@@ -39,10 +39,16 @@ struct pollfd {
 typedef unsigned int nfds_t;
 
 extern int poll __P ((struct pollfd *fds, nfds_t nfds, int timeout));
+#if __GNU_VISIBLE
 extern int ppoll __P ((struct pollfd *fds, nfds_t nfds,
 		       const struct timespec *timeout_ts,
 		       const sigset_t *sigmask));
+#endif
 
 __END_DECLS
+
+#if __SSP_FORTIFY_LEVEL > 0
+#include <ssp/poll.h>
+#endif
 
 #endif /* _SYS_POLL_H */

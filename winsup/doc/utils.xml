@@ -13,6 +13,70 @@
     identically. All of the Cygwin command-line utilities support the
     <literal>--help</literal> and <literal>--version</literal> options. </para>
 
+  <refentry id="chattr">
+    <refmeta>
+      <refentrytitle>chattr</refentrytitle>
+      <manvolnum>1</manvolnum>
+      <refmiscinfo class="manual">Cygwin Utilities</refmiscinfo>
+    </refmeta>
+
+    <refnamediv>
+      <refname>chattr</refname>
+      <refpurpose>Change file attributes</refpurpose>
+    </refnamediv>
+
+    <refsynopsisdiv>
+      <screen>
+chattr [-RVfhv] [+-=mode]... [file]...
+      </screen>
+    </refsynopsisdiv>
+
+    <refsect1 id="chattr-options">
+      <title>Options</title>
+      <screen>
+  -R, --recursive     recursively list attributes of directories and their
+                      contents
+  -V, --verbose       Be verbose during operation
+  -f, --force         suppress error messages
+  -h, --help          this help text
+  -v, --version       display the program version
+</screen>
+    </refsect1>
+
+    <refsect1 id="chattr-desc">
+      <title>Description</title>
+    <para>The <command>chattr</command> program allows to change file
+      attributes, namely DOS attributes, as well as making files sparse,
+      encrypt or compress them on FS level, or setting directories'
+      case sensitivity.
+    </para>
+
+    <para>The format of 'mode' is {+-=}[acCehnrsSt]</para>
+
+    <para>The  operator '+' causes the selected attributes to be added to the
+      existing attributes of the files; '-' causes them to be removed; and
+      '=' causes them to be the only attributes that the files have.</para>
+
+    <para>Supported attributes:</para>
+
+    <screen>
+  'r', 'Readonly':     file is read-only
+  'h', 'Hidden':        file or directory is hidden
+  's', 'System':        file or directory that the operating system uses
+  'a', 'Archive':       file or directory has the archive marker set
+  't', 'Temporary':     file is being used for temporary storage
+  'S', 'Sparse':        file is sparse
+  'c', 'Compressed':    file or directory is compressed
+  'n', 'Notindexed':    file or directory is not to be indexed by the
+			content indexing service
+  'e', 'Encrypted':     file is encrypted
+  'C', 'Casesensitive': directory is handled case sensitive
+			(Windows 10 1803 or later, local NTFS only,
+			 WSL must be installed)
+    </screen>
+    </refsect1>
+  </refentry>
+
     <refentry id="cygcheck">
       <refmeta>
 	<refentrytitle>cygcheck</refentrytitle>
@@ -39,7 +103,7 @@ cygcheck -h
 	</screen>
       </refsynopsisdiv>
 
-      <refsect1>
+      <refsect1 id="cygcheck-options">
 	<title>Options</title>
 	<screen>
 At least one command option or a PROGRAM is required, as shown above.
@@ -71,7 +135,7 @@ Note: -c, -f, and -l only report on packages that are currently installed. To
 </screen>
       </refsect1>
 
-<refsect1>
+<refsect1 id="cygcheck-desc">
   <title>Description</title>
     <para> The <command>cygcheck</command> program is a diagnostic utility for
       dealing with Cygwin programs. If you are familiar with
@@ -245,7 +309,7 @@ cygpath [-F ID]
     </screen>
     </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1 id="cygpath-options">
       <title>Options</title>
     <screen>
 Output type options:
@@ -293,7 +357,7 @@ Other options:
 </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1 id="cygpath-desc">
       <title>Description</title>
     <para>The <command>cygpath</command> program is a utility that converts
       Windows native filenames to Cygwin POSIX-style pathnames and vice versa.
@@ -429,7 +493,7 @@ dumper [OPTION] FILENAME WIN32PID
       </screen>
     </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1 id="dumper-options">
       <title>Options</title>
       <screen>
 -d, --verbose  be verbose while dumping
@@ -439,7 +503,7 @@ dumper [OPTION] FILENAME WIN32PID
 </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1 id="dumper-desc">
       <title>Description</title>
     <para>The <command>dumper</command> utility can be used to create a core
       dump of running Windows process. This core dump can be later loaded to
@@ -490,7 +554,7 @@ getconf -a [pathname]
       </screen>
     </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1 id="getconf-options">
       <title>Options</title>
       <screen>
   -v specification     Indicate specific version for which configuration
@@ -504,7 +568,7 @@ Other options:
 </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1 id="getconf-desc">
       <title>Description</title>
     <para>The <command>getconf</command> utility prints the value of the
       configuration variable specified by <literal>variable_name</literal>. If
@@ -553,7 +617,7 @@ getfacl [-adceEn] FILE [FILE2...]
       </screen>
     </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1 id="getfacl-options">
       <title>Options</title>
       <screen>
   -a, --access        display the file access control list only
@@ -570,7 +634,7 @@ line separates the ACLs for each file.
 </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1 id="getfacl-desc">
       <title>Description</title>
     <para> For each argument that is a regular file, special file or directory,
       <command>getfacl</command> displays the owner, the group, and the ACL.
@@ -622,18 +686,20 @@ kill -l [signal]
       </screen>
     </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1 id="kill-options">
       <title>Options</title>
       <screen>
  -f, --force     force, using win32 interface if necessary
  -l, --list      print a list of signal names
  -s, --signal    send signal (use kill --list for a list)
+ -W, --winpid    specified pids are windows PIDs, not Cygwin PIDs
+                 (use with extreme caution!)
  -h, --help      output usage information and exit
  -V, --version   output version information and exit
 </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1 id="kill-desc">
       <title>Description</title>
     <para>The <command>kill</command> program allows you to send arbitrary
       signals to other Cygwin programs. The usual purpose is to end a running
@@ -653,7 +719,13 @@ $ /bin/kill --version
 </screen> which should give the Cygwin
       <command>kill</command> version number and copyright information. </para>
 
-    <para>Unless you specific the <literal>-f</literal> option, the "pid"
+    <para>The <literal>-f</literal> option uses Windows functions to
+      terminate processes forcefully. Use <literal>-f</literal> to
+      terminate native Windows processes not started by Cygwin processes.
+      <literal>-f</literal> can also be useful to terminate Cygwin processes
+      not answering to SIGKILL.</para>
+
+    <para>Unless you specific the <literal>-W</literal> option, the "pid"
       values used by <command>kill</command> are the Cygwin pids, not the
       Windows pids. To get a list of running programs and their Cygwin pids,
       use the Cygwin <command>ps</command> program. <command>ps -W</command>
@@ -739,7 +811,7 @@ ldd [OPTION]... FILE...
       </screen>
     </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1 id="ldd-options">
       <title>Options</title>
       <screen>
   -h, --help              print this help and exit
@@ -753,12 +825,12 @@ ldd [OPTION]... FILE...
 </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1 id="ldd-desc">
       <title>Description</title>
       <para><command>ldd</command> prints the shared libraries (DLLs) loaded
       when running an executable or DLL.</para>
 
-    <refsect2>
+    <refsect2 id="ldd-desc-security">
       <title>Security</title>
       <para>
 	<command>ldd</command> invokes the Windows loader on the file specified,
@@ -791,7 +863,7 @@ locale [-iusfnU]
       </screen>
     </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1  id="locale-options">
       <title>Options</title>
       <screen>
 System information:
@@ -822,7 +894,7 @@ Other options:
 </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1 id="locale-desc">
       <title>Description</title>
     <para><command>locale</command> without parameters prints information about
       the current locale environment settings.</para>
@@ -951,6 +1023,71 @@ bash$ locale noexpr
     </refsect1>
   </refentry>
 
+  <refentry id="lsattr">
+    <refmeta>
+      <refentrytitle>lsattr</refentrytitle>
+      <manvolnum>1</manvolnum>
+      <refmiscinfo class="manual">Cygwin Utilities</refmiscinfo>
+    </refmeta>
+
+    <refnamediv>
+      <refname>lsattr</refname>
+      <refpurpose>List file attributes</refpurpose>
+    </refnamediv>
+
+    <refsynopsisdiv>
+      <screen>
+lsattr [-RVadhln] [file]...
+      </screen>
+    </refsynopsisdiv>
+
+    <refsect1 id="lsattr-options">
+      <title>Options</title>
+      <screen>
+  -R, --recursive     recursively list attributes of directories and their
+                      contents
+  -V, --version       display the program version
+  -a, --all           list all files in directories, including files that
+                      start with '.'
+  -d, --directory     list directories like other files, rather than listing
+                      their contents.
+  -l, --long          print options using long names instead of single
+                      character abbreviations
+  -n, --no-headers    don't print directory headers when recursing
+  -h, --help          this help text
+</screen>
+    </refsect1>
+
+    <refsect1 id="lsattr-desc">
+      <title>Description</title>
+    <para>The <command>lsattr</command> program allows to list file
+      attributes, namely DOS attributes, file sparseness, FS level
+      encryption and compression state, as well as directories'
+      case sensitivity setting.
+    </para>
+
+    <para>Supported attributes:</para>
+
+    <screen>
+  'r', 'Readonly':      file is read-only, directory is system-marked
+  'h', 'Hidden':        file or directory is hidden
+  's', 'System':        file or directory that the operating system uses
+  'a', 'Archive':       file or directory has the archive marker set
+  't', 'Temporary':     file is being used for temporary storage
+  'S', 'Sparse':        file is sparse
+  'r', 'Reparse':       file or directory that has a reparse point
+  'c', 'Compressed':    file or directory is compressed
+  'o', 'Offline':       the data of a file is moved to offline storage
+  'n', 'Notindexed':    file or directory is not to be indexed by the
+                        content indexing service
+  'e', 'Encrypted':     file is encrypted
+  'C', 'Casesensitive': directory is handled case sensitive
+                        (Windows 10 1803 or later, local NTFS only,
+                         WSL must be installed)
+    </screen>
+    </refsect1>
+  </refentry>
+
   <refentry id="minidumper">
       <refmeta>
       <refentrytitle>minidumper</refentrytitle>
@@ -969,7 +1106,7 @@ minidumper [OPTION] FILENAME WIN32PID
       </screen>
     </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1 id="minidumper-options">
       <title>Options</title>
       <screen>
 -t, --type     minidump type flags
@@ -981,7 +1118,7 @@ minidumper [OPTION] FILENAME WIN32PID
   </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1 id="minidumper-desc">
       <title>Description</title>
   <para>
     The <command>minidumper</command> utility can be used to create a
@@ -1022,7 +1159,7 @@ mkgroup [OPTION]...
       </screen>
     </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1 id="mkgroup-options">
       <title>Options</title>
       <screen>
 Options:
@@ -1053,7 +1190,7 @@ groups on domain controllers and domain member machines.
 </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1 id="mkgroup-desc">
       <title>Description</title>
      <para>Don't use this command to generate a local /etc/group file, unless you
      really need one.  See the Cygwin User's Guide for more information.
@@ -1126,7 +1263,7 @@ mkpasswd [OPTIONS]...
       </screen>
     </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1 id="mkpasswd-options">
       <title>Options</title>
       <screen>
     Options:
@@ -1160,7 +1297,7 @@ on domain controllers and domain member machines.
 </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1 id="mkpasswd-desc">
       <title>Description</title>
     <para>Don't use this command to generate a local /etc/passwd file, unless you
     really need one.  See the Cygwin User's Guide for more information.</para>
@@ -1240,7 +1377,7 @@ mount &lt;posixpath&gt;
       </screen>
      </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1 id="mount-options">
       <title>Options</title>
     <screen>
   -a, --all                     mount all filesystems mentioned in fstab
@@ -1256,7 +1393,7 @@ mount &lt;posixpath&gt;
 </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1 id="mount-desc">
       <title>Description</title>
     <para>The <command>mount</command> program is used to map your drives and
       shares onto Cygwin's simulated POSIX directory tree, much like as is done
@@ -1504,7 +1641,7 @@ passwd [OPTION] [USER]
       </screen>
     </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1 id="passwd-options">
       <title>Options</title>
       <screen>
 User operations:
@@ -1550,7 +1687,7 @@ specifying an empty password.
 </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1 id="passwd-desc">
       <title>Description</title>
     <para> <command>passwd</command> changes passwords for user accounts. A
       normal user may only change the password for their own account, but
@@ -1665,7 +1802,7 @@ pldd [OPTION...] PID
       </screen>
     </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1 id="pldd-options">
       <title>Options</title>
       <screen>
   -?, --help                 Give this help list
@@ -1674,7 +1811,7 @@ pldd [OPTION...] PID
 </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1 id="pldd-desc">
       <title>Description</title>
     <para><command>pldd</command> prints the shared libraries (DLLs) loaded by
       the process with the given PID.</para>
@@ -1699,7 +1836,7 @@ ps [-aefls] [-u UID]
       </screen>
     </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1 id="ps-options">
       <title>Options</title>
       <screen>
  -a, --all       show processes of all users
@@ -1716,7 +1853,7 @@ With no options, ps outputs the long format by default
 </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1 id="ps-desc">
       <title>Description</title>
     <para>The <command>ps</command> program gives the status of all the Cygwin
       processes running on the system (ps = "process status"). Due to the
@@ -1772,7 +1909,7 @@ regtool [OPTION] (add|check|get|list|remove|unset|load|unload|save) KEY
       </screen>
     </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1 id="regtool-options">
       <title>Options</title>
       <screen>
 Actions:
@@ -1839,12 +1976,15 @@ remote host in either \\hostname or hostname: format and prefix is any of:
   users    HKU   HKEY_USERS
 
 You can use forward slash ('/') as a separator instead of backslash, in
-that case backslash is treated as escape character
-Example: regtool get '\user\software\Microsoft\Clock\iFormat'
+that case backslash is treated as an escape character.
+You can also supply the registry path prefix /proc/registry{,32,64}/ to
+use path completion.
+Example:
+  regtool list '/HKLM/SOFTWARE/Classes/MIME/Database/Content Type/audio\\/wav'
 </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1 id="regtool-desc">
       <title>Description</title>
     <para>The <command>regtool</command> program allows shell scripts to access
       and modify the Windows registry. Note that modifying the Windows registry
@@ -1963,12 +2103,12 @@ setfacl [-n] {[-bk]|[-x acl_entries] [-m acl_entries]} FILE...
       </screen>
      </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1 id="setfacl-options">
       <title>Options</title>
       <screen>
   -b, --remove-all       remove all extended ACL entries\n"
   -x, --delete           delete one or more specified ACL entries\n"
-  -f, --file             set ACL entries for FILE to ACL entries read\n"
+  -f, --set-file         set ACL entries for FILE to ACL entries read\n"
                          from ACL_FILE\n"
   -k, --remove-default   remove all default ACL entries\n"
   -m, --modify           modify one or more specified ACL entries\n"
@@ -1982,7 +2122,7 @@ At least one of (-b, -x, -f, -k, -m, -s) must be specified\n"
 </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1 id="setfacl-desc">
       <title>Description</title>
     <para> For each file given as parameter, <command>setfacl</command> will
       either replace its complete ACL (<literal>-s</literal>,
@@ -2035,7 +2175,7 @@ At least one of (-b, -x, -f, -k, -m, -s) must be specified\n"
          d[efault]:o[ther][:]
 </screen> </para>
 
-    <para> <literal>-f</literal>,<literal>--file</literal> Take the Acl_entries
+    <para> <literal>-f</literal>,<literal>--set-file</literal> Take the Acl_entries
       from ACL_FILE one per line. Whitespace characters are ignored, and the
       character "#" may be used to start a comment. The special filename "-"
       indicates reading from stdin. Note that you can use this with
@@ -2111,7 +2251,7 @@ setmetamode [metabit|escprefix]
       </screen>
     </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1 id="setmetamode-options">
       <title>Options</title>
       <screen>
   Without argument, it shows the current meta key mode.
@@ -2126,7 +2266,7 @@ Other options:
 </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1 id="setmetamode-desc">
       <title>Description</title>
     <para><command>setmetamode</command> can be used to determine and set the
       key code sent by the meta (aka <literal>Alt</literal>) key.</para>
@@ -2151,7 +2291,7 @@ ssp [options] low_pc high_pc command...
       </screen>
     </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1 id="ssp-options">
       <title>Options</title>
       <screen>
  -c, --console-trace  trace every EIP value to the console. *Lots* slower.
@@ -2173,7 +2313,7 @@ Example: ssp 0x401000 0x403000 hello.exe
 </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1 id="ssp-desc">
       <title>Description</title>
     <para> SSP - The Single Step Profiler </para>
 
@@ -2326,7 +2466,7 @@ strace [OPTIONS] -p &lt;pid&gt;
       </screen>
     </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1  id="strace-options">
       <title>Options</title>
       <screen>
   -b, --buffer-size=SIZE       set size of output file buffer
@@ -2381,7 +2521,7 @@ strace [OPTIONS] -p &lt;pid&gt;
 </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1  id="strace-desc">
       <title>Description</title>
     <para>The <command>strace</command> program executes a program, and
       optionally the children of the program, reporting any Cygwin DLL output
@@ -2420,7 +2560,7 @@ tzset [OPTION]
       </screen>
     </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1 id="tzset-options">
       <title>Options</title>
       <screen>
 Options:
@@ -2429,7 +2569,7 @@ Options:
       </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1 id="tzset-desc">
       <title>Description</title>
       Use tzset to set your TZ variable. In POSIX-compatible shells like bash,
       dash, mksh, or zsh:
@@ -2466,7 +2606,7 @@ umount [OPTION] [&lt;posixpath&gt;]
       </screen>
     </refsynopsisdiv>
 
-    <refsect1>
+    <refsect1 id="umount-options">
       <title>Options</title>
       <screen>
   -h, --help                    output usage information and exit
@@ -2475,7 +2615,7 @@ umount [OPTION] [&lt;posixpath&gt;]
 </screen>
     </refsect1>
 
-    <refsect1>
+    <refsect1 id="umount-desc">
       <title>Description</title>
     <para>The <command>umount</command> program removes mounts from the mount
       table in the current session. If you specify a POSIX path that

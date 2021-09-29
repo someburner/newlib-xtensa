@@ -22,8 +22,7 @@
 #ifndef REENTRANT_SYSCALLS_PROVIDED
 
 int
-_DEFUN (fstat, (fd, buf),
-       int fd _AND
+fstat (int fd,
        struct stat *buf)
 {
   buf->st_mode = S_IFCHR;	/* Always pretend to be a tty */

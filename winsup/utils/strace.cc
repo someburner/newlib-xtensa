@@ -13,6 +13,7 @@ details. */
 #define cygwin_internal cygwin_internal_dontuse
 #include <stdio.h>
 #include <fcntl.h>
+#include <io.h>
 #include <getopt.h>
 #include <stdarg.h>
 #include <string.h>
@@ -634,7 +635,7 @@ handle_output_debug_string (DWORD id, LPVOID p, unsigned mask, FILE *ofile)
     {
       s -= 8;
 #ifdef __x86_64__
-      sprintf (s, "%012I64x", n);
+      sprintf (s, "%012llx", n);
 #else
       sprintf (s, "%08lx", n);
 #endif
@@ -671,6 +672,25 @@ GetFileNameFromHandle(HANDLE hFile, WCHAR pszFilename[MAX_PATH+1])
   return result;
 }
 
+static char *
+cygwin_pid (DWORD winpid)
+{
+  static char buf[48];
+  static DWORD max_cygpid = 0;
+  DWORD cygpid;
+
+  if (!max_cygpid)
+    max_cygpid = (DWORD) cygwin_internal (CW_MAX_CYGWIN_PID);
+
+  cygpid = (DWORD) cygwin_internal (CW_WINPID_TO_CYGWIN_PID, winpid);
+
+  if (cygpid >= max_cygpid)
+    snprintf (buf, sizeof buf, "%lu", winpid);
+  else
+    snprintf (buf, sizeof buf, "%lu (pid: %lu)", winpid, cygpid);
+  return buf;
+}
+
 static DWORD
 proc_child (unsigned mask, FILE *ofile, pid_t pid)
 {
@@ -705,7 +725,8 @@ proc_child (unsigned mask, FILE *ofile, pid_t pid)
 	{
 	case CREATE_PROCESS_DEBUG_EVENT:
 	  if (events)
-	    fprintf (ofile, "--- Process %lu created\n", ev.dwProcessId);
+	    fprintf (ofile, "--- Process %s created\n",
+		     cygwin_pid (ev.dwProcessId));
 	  if (ev.u.CreateProcessInfo.hFile)
 	    CloseHandle (ev.u.CreateProcessInfo.hFile);
 	  add_child (ev.dwProcessId, ev.u.CreateProcessInfo.hProcess);
@@ -713,8 +734,8 @@ proc_child (unsigned mask, FILE *ofile, pid_t pid)
 
 	case CREATE_THREAD_DEBUG_EVENT:
 	  if (events)
-	    fprintf (ofile, "--- Process %lu thread %lu created\n",
-		     ev.dwProcessId, ev.dwThreadId);
+	    fprintf (ofile, "--- Process %s thread %lu created\n",
+		     cygwin_pid (ev.dwProcessId), ev.dwThreadId);
 	  break;
 
 	case LOAD_DLL_DEBUG_EVENT:
@@ -726,8 +747,9 @@ proc_child (unsigned mask, FILE *ofile, pid_t pid)
 	      if (!GetFileNameFromHandle(ev.u.LoadDll.hFile, dllname))
 		wcscpy(dllname, L"(unknown)");
 
-	      fprintf (ofile, "--- Process %lu loaded %ls at %p\n",
-		       ev.dwProcessId, dllname, ev.u.LoadDll.lpBaseOfDll);
+	      fprintf (ofile, "--- Process %s loaded %ls at %p\n",
+		       cygwin_pid (ev.dwProcessId), dllname,
+		       ev.u.LoadDll.lpBaseOfDll);
 	    }
 
 	  if (ev.u.LoadDll.hFile)
@@ -736,8 +758,8 @@ proc_child (unsigned mask, FILE *ofile, pid_t pid)
 
 	case UNLOAD_DLL_DEBUG_EVENT:
 	  if (events)
-	    fprintf (ofile, "--- Process %lu unloaded DLL at %p\n",
-		     ev.dwProcessId, ev.u.UnloadDll.lpBaseOfDll);
+	    fprintf (ofile, "--- Process %s unloaded DLL at %p\n",
+		     cygwin_pid (ev.dwProcessId), ev.u.UnloadDll.lpBaseOfDll);
 	  break;
 
 	case OUTPUT_DEBUG_STRING_EVENT:
@@ -748,16 +770,18 @@ proc_child (unsigned mask, FILE *ofile, pid_t pid)
 
 	case EXIT_PROCESS_DEBUG_EVENT:
 	  if (events)
-	    fprintf (ofile, "--- Process %lu exited with status 0x%lx\n",
-		     ev.dwProcessId, ev.u.ExitProcess.dwExitCode);
+	    fprintf (ofile, "--- Process %s exited with status 0x%lx\n",
+		     cygwin_pid (ev.dwProcessId), ev.u.ExitProcess.dwExitCode);
 	  res = ev.u.ExitProcess.dwExitCode;
 	  remove_child (ev.dwProcessId);
 	  break;
 
 	case EXIT_THREAD_DEBUG_EVENT:
 	  if (events)
-	    fprintf (ofile, "--- Process %lu thread %lu exited with status 0x%lx\n",
-		     ev.dwProcessId, ev.dwThreadId, ev.u.ExitThread.dwExitCode);
+	    fprintf (ofile, "--- Process %s thread %lu exited with "
+			    "status 0x%lx\n",
+		     cygwin_pid (ev.dwProcessId), ev.dwThreadId,
+		     ev.u.ExitThread.dwExitCode);
 	  break;
 
 	case EXCEPTION_DEBUG_EVENT:
@@ -769,8 +793,8 @@ proc_child (unsigned mask, FILE *ofile, pid_t pid)
 	    default:
 	      status = DBG_EXCEPTION_NOT_HANDLED;
 	      if (ev.u.Exception.dwFirstChance)
-		fprintf (ofile, "--- Process %lu, exception %08lx at %p\n",
-			 ev.dwProcessId,
+		fprintf (ofile, "--- Process %s, exception %08lx at %p\n",
+			 cygwin_pid (ev.dwProcessId),
 			 ev.u.Exception.ExceptionRecord.ExceptionCode,
 			 ev.u.Exception.ExceptionRecord.ExceptionAddress);
 	      break;
@@ -984,7 +1008,7 @@ Trace system calls and signals\n\
     wm       0x000400 (_STRACE_WM)       Trace Windows msgs (enable _strace_wm).\n\
     sigp     0x000800 (_STRACE_SIGP)     Trace signal and process handling.\n\
     minimal  0x001000 (_STRACE_MINIMAL)  Very minimal strace output.\n\
-    pthread  0x002000 (_STRACE_PTHREAD)	Pthread calls.\n\
+    pthread  0x002000 (_STRACE_PTHREAD)	 Pthread calls.\n\
     exitdump 0x004000 (_STRACE_EXITDUMP) Dump strace cache on exit.\n\
     system   0x008000 (_STRACE_SYSTEM)   Serious error; goes to console and log.\n\
     nomutex  0x010000 (_STRACE_NOMUTEX)  Don't use mutex for synchronization.\n\
@@ -1053,6 +1077,9 @@ main2 (int argc, char **argv)
 	for (argc = 0, argv = av; *av; av++)
 	  argc++;
     }
+
+  _setmode (1, _O_BINARY);
+  _setmode (2, _O_BINARY);
 
   if (!(pgm = strrchr (*argv, '\\')) && !(pgm = strrchr (*argv, '/')))
     pgm = *argv;
@@ -1187,7 +1214,7 @@ main (int argc, char **argv)
      registry setting to 0x100000 (TOP_DOWN). */
   char buf[CYGTLS_PADSIZE];
 
-  memset (buf, 0, sizeof (buf));
+  RtlSecureZeroMemory (buf, sizeof (buf));
   exit (main2 (argc, argv));
 }
 
